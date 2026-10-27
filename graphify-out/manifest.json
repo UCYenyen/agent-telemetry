@@ -1,0 +1,106 @@
+{
+  "agent_controller.py": {
+    "mtime": 1793079489.653306,
+    "seen": 1793079643.9731567,
+    "ast_hash": "4c3e04458767227bb70f05720889a281",
+    "semantic_hash": "4c3e04458767227bb70f05720889a281"
+  },
+  "config.json": {
+    "mtime": 1793078700.0145717,
+    "seen": 1793079245.0015101,
+    "ast_hash": "9f88f7aa04ba6c928a4935c4425bd641",
+    "semantic_hash": "9f88f7aa04ba6c928a4935c4425bd641",
+    "ast_empty": true
+  },
+  "config.py": {
+    "mtime": 1793078206.0247283,
+    "seen": 1793079245.0015142,
+    "ast_hash": "b25bac721aec05538a4e7e082df05fd2",
+    "semantic_hash": "b25bac721aec05538a4e7e082df05fd2"
+  },
+  "council_engine.py": {
+    "mtime": 1793079514.8075492,
+    "seen": 1793079643.9733083,
+    "ast_hash": "fffa15a4bc23a8b002876819314119aa",
+    "semantic_hash": "fffa15a4bc23a8b002876819314119aa"
+  },
+  "openrouter_client.py": {
+    "mtime": 1793077147.381209,
+    "seen": 1793079245.0015757,
+    "ast_hash": "ee49e2f798126830a643ab122699875a",
+    "semantic_hash": "ee49e2f798126830a643ab122699875a"
+  },
+  "run.sh": {
+    "mtime": 1793078057.8225663,
+    "seen": 1793079245.0015998,
+    "ast_hash": "7ac78bff5ae559619078e1b02619c84c",
+    "semantic_hash": "7ac78bff5ae559619078e1b02619c84c"
+  },
+  "server.py": {
+    "mtime": 1793079581.4721844,
+    "seen": 1793079643.973489,
+    "ast_hash": "57bc9dea5e451597d6c12fb0027bc489",
+    "semantic_hash": "57bc9dea5e451597d6c12fb0027bc489"
+  },
+  "test_mcp.mjs": {
+    "mtime": 1793070654.8641691,
+    "seen": 1793079245.0016494,
+    "ast_hash": "84a02e2780c28f018e4ffb3970761a54",
+    "semantic_hash": "84a02e2780c28f018e4ffb3970761a54"
+  },
+  "tmux_manager.py": {
+    "mtime": 1793069689.266179,
+    "seen": 1793079245.001673,
+    "ast_hash": "98ce0934c4e36f3819d7e315828add3d",
+    "semantic_hash": "98ce0934c4e36f3819d7e315828add3d"
+  },
+  ".codex/hooks.json": {
+    "mtime": 1793079343.3998482,
+    "seen": 1793079643.9731488,
+    "ast_hash": "832a501e4f041235e1656072e6b2d7d1",
+    "semantic_hash": "832a501e4f041235e1656072e6b2d7d1",
+    "ast_empty": true
+  },
+  "graphify_bridge.py": {
+    "mtime": 1793079451.0319288,
+    "seen": 1793079643.9733336,
+    "ast_hash": "281905f9bd4ab678c5738164dc509053",
+    "semantic_hash": "281905f9bd4ab678c5738164dc509053"
+  },
+  ".agents/skills/frontend-design-skill/SKILL.md": {
+    "mtime": 1793075724.7064211,
+    "seen": 1793080035.6819506,
+    "ast_hash": "e80e3bb790467a376801a8cafeff8862",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1793079343.3988483,
+    "seen": 1793080035.6819525,
+    "ast_hash": "f36539ecc9af68f33ebd72770ce4a19e",
+    "semantic_hash": ""
+  },
+  "CLAUDE.md": {
+    "mtime": 1793079396.1763837,
+    "seen": 1793080035.681954,
+    "ast_hash": "f36539ecc9af68f33ebd72770ce4a19e",
+    "semantic_hash": ""
+  },
+  "GEMINI.md": {
+    "mtime": 1793079396.1843836,
+    "seen": 1793080035.6819549,
+    "ast_hash": "f36539ecc9af68f33ebd72770ce4a19e",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1793069449.5729575,
+    "seen": 1793080035.6819558,
+    "ast_hash": "bbb2753859da61986206e723792b3631",
+    "semantic_hash": ""
+  },
+  "web/index.html": {
+    "mtime": 1793079629.145631,
+    "seen": 1793080035.6819565,
+    "ast_hash": "8dcbb69616f7f7559fb3a32abb892fed",
+    "semantic_hash": ""
+  }
+}

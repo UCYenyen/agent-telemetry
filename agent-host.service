@@ -1,0 +1,17 @@
+[Unit]
+Description=Multi-Agent Host Web Service (Claude & Antigravity)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/PersonalProject/llm
+Environment=PATH=/snap/bin:/snap/antigravity-cli/current/bin:/root/.local/bin:/root/.nvm/versions/node/v24.15.0/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 /var/www/PersonalProject/llm/server.py
+Restart=always
+RestartSec=3
+# Only stop the web server; tmux agent sessions it started must survive a restart
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

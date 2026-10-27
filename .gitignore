@@ -1,0 +1,6 @@
+# Live config: password hash, session secret, API keys, saved sessions
+config.json
+__pycache__/
+*.pyc
+*.log
+graphify-out/cache/

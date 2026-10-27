@@ -1,0 +1,288 @@
+{
+  "communities": {
+    "0": [
+      "agent_controller",
+      "agent_controller_rationale_1",
+      "concurrent_futures",
+      "council_engine",
+      "council_engine_rationale_1",
+      "council_engine_resolve_model_id",
+      "http_server",
+      "openrouter_client",
+      "openrouter_client_rationale_1",
+      "os",
+      "random",
+      "re",
+      "server",
+      "server_background_monitor",
+      "server_rationale_2",
+      "server_rationale_27",
+      "server_run",
+      "sys",
+      "threading",
+      "time",
+      "typing",
+      "urllib_error",
+      "urllib_parse",
+      "urllib_request",
+      "uuid"
+    ],
+    "1": [
+      "council_engine_councilmanager",
+      "council_engine_councilmanager_add_advisor",
+      "council_engine_councilmanager_append_msg",
+      "council_engine_councilmanager_delete_advisor",
+      "council_engine_councilmanager_delete_room",
+      "council_engine_councilmanager_get_room",
+      "council_engine_councilmanager_get_state",
+      "council_engine_councilmanager_init",
+      "council_engine_councilmanager_persist",
+      "council_engine_councilmanager_reset_advisors",
+      "council_engine_councilmanager_run_council_pipeline",
+      "council_engine_councilmanager_run_council_pipeline_run_single_advisor",
+      "council_engine_councilmanager_run_council_pipeline_run_single_reviewer",
+      "council_engine_councilmanager_start_or_continue_council",
+      "council_engine_councilmanager_update_advisor",
+      "council_engine_councilmanager_update_settings",
+      "council_engine_query_llm_with_cascade",
+      "council_engine_rationale_52"
+    ],
+    "2": [
+      "any",
+      "graphify_bridge",
+      "graphify_bridge_enrich_prompt_with_graphify",
+      "graphify_bridge_get_env",
+      "graphify_bridge_get_graphify_bin",
+      "graphify_bridge_get_graphify_status",
+      "graphify_bridge_query_graphify",
+      "graphify_bridge_rationale_1",
+      "graphify_bridge_rationale_125",
+      "graphify_bridge_rationale_158",
+      "graphify_bridge_rationale_188",
+      "graphify_bridge_rationale_42",
+      "graphify_bridge_rationale_55",
+      "graphify_bridge_rebuild_graphs",
+      "graphify_bridge_resolve_graph_json",
+      "subprocess"
+    ],
+    "3": [
+      "agent_controller_rationale_463",
+      "agent_controller_sessionmanager_stop_session",
+      "agent_controller_sessionmanager_update_states",
+      "completedprocess",
+      "shutil",
+      "tmux_manager",
+      "tmux_manager_has_session",
+      "tmux_manager_kill_session",
+      "tmux_manager_new_session",
+      "tmux_manager_rationale_1",
+      "tmux_manager_rationale_31",
+      "tmux_manager_rationale_61",
+      "tmux_manager_run_tmux"
+    ],
+    "4": [
+      "config",
+      "config_hash_password",
+      "config_load_config",
+      "config_rationale_1",
+      "config_save_config",
+      "config_verify_password",
+      "copy",
+      "hashlib",
+      "json",
+      "openrouter_client_call_openrouter",
+      "openrouter_client_rationale_44",
+      "secrets"
+    ],
+    "5": [
+      "agent_controller_rationale_288",
+      "agent_controller_rationale_532",
+      "agent_controller_sessionmanager_dispatch_openrouter_async",
+      "agent_controller_sessionmanager_dispatch_openrouter_async_worker",
+      "agent_controller_sessionmanager_get_effective_openrouter_key",
+      "agent_controller_sessionmanager_get_openrouter_fallback_list",
+      "agent_controller_sessionmanager_send_prompt",
+      "agent_controller_sessionmanager_switch_model",
+      "agent_controller_sessionmanager_trigger_openrouter_fallback",
+      "tmux_manager_rationale_44",
+      "tmux_manager_send_keys"
+    ],
+    "6": [
+      "agent_controller_rationale_385",
+      "agent_controller_sessionmanager",
+      "agent_controller_sessionmanager_build_cmd",
+      "agent_controller_sessionmanager_clear_history",
+      "agent_controller_sessionmanager_resume_session",
+      "agent_controller_sessionmanager_start_session",
+      "agent_controller_sessionmanager_toggle_fallback",
+      "agent_controller_sessionmanager_toggle_openrouter"
+    ],
+    "7": [
+      "basehttprequesthandler",
+      "openrouter_client_fetch_openrouter_models",
+      "openrouter_client_rationale_104",
+      "server_agenthosthandler",
+      "server_agenthosthandler_do_get",
+      "server_agenthosthandler_do_post",
+      "server_agenthosthandler_log_message",
+      "server_agenthosthandler_send_json"
+    ],
+    "8": [
+      "agent_controller_agentsession",
+      "agent_controller_agentsession_init",
+      "agent_controller_agentsession_to_dict",
+      "agent_controller_rationale_508",
+      "agent_controller_sessionmanager_init",
+      "agent_controller_sessionmanager_load_saved",
+      "agent_controller_sessionmanager_trigger_fallback"
+    ],
+    "9": [
+      "agent_controller_rationale_112",
+      "agent_controller_sessionmanager_get_history",
+      "agent_controller_sessionmanager_sync_existing_tmux_sessions",
+      "tmux_manager_capture_pane",
+      "tmux_manager_list_sessions",
+      "tmux_manager_rationale_18",
+      "tmux_manager_rationale_53"
+    ],
+    "10": [
+      "ref",
+      "test_mcp",
+      "test_mcp_client",
+      "test_mcp_transport"
+    ],
+    "11": [
+      "run",
+      "run_path",
+      "run_sh__entry"
+    ]
+  },
+  "cohesion": {
+    "0": 0.12333333333333334,
+    "1": 0.20261437908496732,
+    "2": 0.20833333333333334,
+    "3": 0.21794871794871795,
+    "4": 0.25757575757575757,
+    "5": 0.23636363636363636,
+    "6": 0.32142857142857145,
+    "7": 0.32142857142857145,
+    "8": 0.3333333333333333,
+    "9": 0.2857142857142857,
+    "10": 0.5,
+    "11": 0.6666666666666666
+  },
+  "gods": [
+    {
+      "id": "agent_controller_sessionmanager",
+      "label": "SessionManager",
+      "degree": 21
+    },
+    {
+      "id": "council_engine_councilmanager",
+      "label": "CouncilManager",
+      "degree": 15
+    },
+    {
+      "id": "agent_controller_agentsession",
+      "label": "AgentSession",
+      "degree": 9
+    },
+    {
+      "id": "tmux_manager_run_tmux",
+      "label": "run_tmux()",
+      "degree": 9
+    },
+    {
+      "id": "graphify_bridge_query_graphify",
+      "label": "query_graphify()",
+      "degree": 9
+    },
+    {
+      "id": "council_engine_query_llm_with_cascade",
+      "label": "query_llm_with_cascade()",
+      "degree": 8
+    },
+    {
+      "id": "graphify_bridge_rebuild_graphs",
+      "label": "rebuild_graphs()",
+      "degree": 8
+    },
+    {
+      "id": "tmux_manager_send_keys",
+      "label": "send_keys()",
+      "degree": 7
+    },
+    {
+      "id": "server_agenthosthandler",
+      "label": "AgentHostHandler",
+      "degree": 6
+    },
+    {
+      "id": "graphify_bridge_get_graphify_status",
+      "label": "get_graphify_status()",
+      "degree": 6
+    }
+  ],
+  "surprises": [
+    {
+      "source": "query_llm_with_cascade()",
+      "target": "call_openrouter()",
+      "source_files": [
+        "council_engine.py",
+        "openrouter_client.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "worker()",
+      "target": "enrich_prompt_with_graphify()",
+      "source_files": [
+        "agent_controller.py",
+        "graphify_bridge.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "worker()",
+      "target": "call_openrouter()",
+      "source_files": [
+        "agent_controller.py",
+        "openrouter_client.py"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `SessionManager` connect `Community 6` to `Community 0`, `Community 3`, `Community 5`, `Community 8`, `Community 9`?",
+      "why": "High betweenness centrality (0.269) - this node is a cross-community bridge."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `PATH` to the rest of the system?",
+      "why": "1 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 0` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.12333333333333334 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `CouncilManager` connect `Community 1` to `Community 0`?",
+      "why": "High betweenness centrality (0.151) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `AgentHostHandler` connect `Community 7` to `Community 0`?",
+      "why": "High betweenness centrality (0.049) - this node is a cross-community bridge."
+    }
+  ]
+}
