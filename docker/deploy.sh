@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
-# Runs on the VPS as the forced command of the CI deploy key, so the key can do nothing else.
-# CI sends: deploy <branch> <github token>
+# CI runs: docker/deploy.sh deploy <branch> <github token>
+# Works with a plain SSH key, or as the forced command of a key restricted to this script
+# (then the requested command arrives in SSH_ORIGINAL_COMMAND instead of the arguments).
 set -euo pipefail
 
-read -r action branch token <<< "${SSH_ORIGINAL_COMMAND:-}"
+if [[ -n "${SSH_ORIGINAL_COMMAND:-}" ]]; then
+    read -r -a requested <<< "$SSH_ORIGINAL_COMMAND"
+    [[ "${requested[0]:-}" == */deploy.sh ]] && requested=("${requested[@]:1}")
+    set -- "${requested[@]}"
+fi
+
+action="${1:-}" branch="${2:-}" token="${3:-}"
 
 if [[ "$action" != "deploy" || ! "$branch" =~ ^(main|laravel-react-rewrite)$ || -z "$token" ]]; then
     echo "usage: deploy <main|laravel-react-rewrite> <token>" >&2
