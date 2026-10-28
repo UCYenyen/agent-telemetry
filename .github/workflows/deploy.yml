@@ -2,7 +2,7 @@ name: Deploy Agent Host
 
 on:
   push:
-    branches: [main, laravel-react-rewrite]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
