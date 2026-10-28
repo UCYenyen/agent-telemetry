@@ -69,11 +69,30 @@ jobs:
     permissions:
       packages: read
     steps:
+      # Some runner addresses intermittently can't reach the VPS, so retry the connection.
+      # ssh exits 255 only when it could not connect; any other code came from deploy.sh itself.
       - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT }}
-          script: /var/www/PersonalProject/llm/docker/deploy.sh deploy ${{ github.ref_name }} ${{ github.token }}
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          BRANCH: ${{ github.ref_name }}
+          TOKEN: ${{ github.token }}
+        run: |
+          install -m 600 /dev/null "$RUNNER_TEMP/key"
+          printf '%s\n' "$VPS_SSH_KEY" > "$RUNNER_TEMP/key"
+
+          for attempt in 1 2 3 4 5 6; do
+            status=0
+            ssh -i "$RUNNER_TEMP/key" -p "$VPS_PORT" \
+              -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 -o ServerAliveInterval=15 \
+              "$VPS_USER@$VPS_HOST" \
+              "/var/www/PersonalProject/llm/docker/deploy.sh deploy $BRANCH $TOKEN" || status=$?
+
+            [ "$status" -ne 255 ] && exit "$status"
+            echo "::warning::SSH connection failed (attempt $attempt), retrying in 20s"
+            sleep 20
+          done
+
+          exit 1
