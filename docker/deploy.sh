@@ -38,7 +38,9 @@ git merge --ff-only "origin/$branch"
 export DOCKER_CONFIG
 DOCKER_CONFIG="$(mktemp -d)"
 trap 'rm -rf "$DOCKER_CONFIG"' EXIT
-retry docker login ghcr.io -u UCYenyen --password-stdin <<< "$token" >/dev/null
+# A function, so each retry feeds the token again (stdin is used up by the first attempt)
+ghcr_login() { docker login ghcr.io -u UCYenyen --password-stdin <<< "$token" >/dev/null; }
+retry ghcr_login
 retry docker compose pull
 docker compose up -d --remove-orphans
 docker image prune -f
