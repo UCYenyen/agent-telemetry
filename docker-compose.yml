@@ -1,0 +1,50 @@
+# Agent Host: web server, two queue workers and the agent monitor, all from one image.
+# The image is built by GitHub Actions and pulled from GHCR (.github/workflows/deploy.yml).
+# Every service talks to the host's tmux server and sees host processes, because the
+# agent sessions (claude, agy) run on the host, not in the container.
+
+x-app: &app
+  image: ghcr.io/ucyenyen/agent-telemetry:latest
+  restart: unless-stopped
+  env_file: .env
+  pid: host
+  privileged: true # nsenter into the host for the agy wrapper
+  volumes:
+    - /tmp/tmux-0:/tmp/tmux-0 # host tmux server socket
+    - storage:/app/storage
+  networks:
+    - global_proxy # reaches the shared `postgres` container
+
+services:
+  app:
+    <<: *app
+    container_name: agent-host
+    command: sh -c "php artisan migrate --force && php artisan serve --host=0.0.0.0 --port=3116"
+    ports:
+      - "127.0.0.1:3116:3116"
+      - "172.18.0.1:3116:3116" # Nginx Proxy Manager (telemetry.sembakobayi.com)
+
+  queue:
+    <<: *app
+    container_name: agent-host-queue
+    command: php artisan queue:work --tries=1 --timeout=0
+    depends_on: [app]
+
+  queue-council:
+    <<: *app
+    container_name: agent-host-queue-council
+    command: php artisan queue:work --queue=council --tries=1 --timeout=0
+    depends_on: [app]
+
+  monitor:
+    <<: *app
+    container_name: agent-host-monitor
+    command: php artisan agents:monitor
+    depends_on: [app]
+
+volumes:
+  storage:
+
+networks:
+  global_proxy:
+    external: true

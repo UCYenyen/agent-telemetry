@@ -1,0 +1,6 @@
+#!/bin/sh
+# Antigravity CLI is a snap on the host and cannot run inside the container.
+# Run it in the host's namespaces instead (requires pid: host + privileged).
+exec nsenter -t 1 -m -u -i -n -p -- \
+    /usr/bin/env HOME=/root PATH=/snap/bin:/usr/local/bin:/usr/bin:/bin \
+    /snap/bin/agy "$@"

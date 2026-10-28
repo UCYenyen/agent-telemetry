@@ -11,6 +11,10 @@ async function request(method, url, body) {
         body: body === undefined ? undefined : JSON.stringify(body),
     });
 
+    if (response.status === 401) {
+        window.location.assign('/login');
+    }
+
     const data = response.status === 204 ? null : await response.json().catch(() => null);
 
     if (!response.ok) {

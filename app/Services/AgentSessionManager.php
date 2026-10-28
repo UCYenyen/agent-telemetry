@@ -139,20 +139,36 @@ class AgentSessionManager
 
     public function syncDiscovered(): void
     {
-        $known = AgentSession::withTrashed()->pluck('name')->all();
+        $processes = $this->processes();
+        $children = [];
 
-        foreach (array_diff($this->tmux->sessions(), $known) as $name) {
-            $pane = $this->tmux->capture($name, 50);
+        foreach ($processes as $pid => $process) {
+            $children[$process['ppid']][] = $pid;
+        }
+
+        $known = AgentSession::withTrashed()->pluck('name')->all();
+        $inTmux = [];
+
+        // Identify each tmux session by the agent process running in its pane, not by its screen text
+        foreach ($this->tmux->panePids() as $name => $panePid) {
+            $pids = $this->descendants($children, $panePid);
+            $inTmux = [...$inTmux, ...$pids];
+
+            if (in_array($name, $known, true)) {
+                continue;
+            }
+
+            $agent = collect($pids)->map(fn (int $pid) => $this->parseProcess($processes[$pid]['args'] ?? ''))->filter()->first();
 
             AgentSession::create([
                 'name' => $name,
-                'title' => $name,
-                'agent' => str_contains($pane, 'agy') || str_contains($pane, 'Antigravity') ? 'antigravity' : 'claude',
-                'model' => 'auto',
+                'title' => $agent['title'] ?? $name,
+                'agent' => $agent['agent'] ?? 'claude',
+                'model' => $agent['model'] ?? 'auto',
             ]);
         }
 
-        $this->syncProcesses();
+        $this->syncProcesses($processes, array_flip($inTmux));
     }
 
     public function updateStates(): void
@@ -255,19 +271,19 @@ class AgentSessionManager
         }
     }
 
-    private function syncProcesses(): void
+    /**
+     * Agent CLIs started outside tmux. Processes inside a tmux session are already tracked by that session.
+     */
+    private function syncProcesses(array $processes, array $inTmux): void
     {
-        $result = Process::run(['ps', '-eo', 'pid,args']);
-
-        if ($result->failed()) {
+        if ($processes === []) {
             return;
         }
 
         $live = [];
 
-        foreach (explode("\n", trim($result->output())) as $line) {
-            [$pid, $args] = array_pad(preg_split('/\s+/', trim($line), 2), 2, '');
-            $process = $this->parseProcess($args);
+        foreach ($processes as $pid => ['args' => $args]) {
+            $process = isset($inTmux[$pid]) ? null : $this->parseProcess($args);
 
             if (! $process) {
                 continue;
@@ -288,6 +304,41 @@ class AgentSessionManager
             ->get()
             ->filter(fn (AgentSession $session) => str_starts_with($session->name, 'proc_'))
             ->each->forceDelete();
+    }
+
+    /**
+     * pid => ['ppid' => int, 'args' => string] for every process on the host.
+     */
+    private function processes(): array
+    {
+        $result = Process::run(['ps', '-eo', 'pid=,ppid=,args=']);
+
+        if ($result->failed()) {
+            return [];
+        }
+
+        $processes = [];
+
+        foreach (explode("\n", trim($result->output())) as $line) {
+            $parts = preg_split('/\s+/', trim($line), 3);
+
+            if (count($parts) === 3 && ctype_digit($parts[0])) {
+                $processes[(int) $parts[0]] = ['ppid' => (int) $parts[1], 'args' => $parts[2]];
+            }
+        }
+
+        return $processes;
+    }
+
+    private function descendants(array $children, int $root): array
+    {
+        $pids = [$root];
+
+        for ($i = 0; $i < count($pids); $i++) {
+            array_push($pids, ...($children[$pids[$i]] ?? []));
+        }
+
+        return $pids;
     }
 
     private function parseProcess(string $args): ?array

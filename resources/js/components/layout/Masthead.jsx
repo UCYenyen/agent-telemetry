@@ -1,3 +1,9 @@
+import { api } from '../../lib/api';
+
+function signOut() {
+    api.post('/logout').finally(() => window.location.assign('/login'));
+}
+
 export default function Masthead({ onRefresh, onDeploy }) {
     return (
         <header className="masthead">
@@ -16,6 +22,9 @@ export default function Masthead({ onRefresh, onDeploy }) {
                 </button>
                 <button type="button" onClick={onDeploy}>
                     + DEPLOY SESSION
+                </button>
+                <button type="button" className="ghost" onClick={signOut}>
+                    SIGN OUT
                 </button>
             </div>
         </header>

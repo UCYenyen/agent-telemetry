@@ -7,11 +7,25 @@ use Illuminate\Support\Facades\Process;
 
 class Tmux
 {
-    public function sessions(): array
+    /**
+     * Session name => pid of the process in its first pane.
+     */
+    public function panePids(): array
     {
-        $result = $this->run('list-sessions', '-F', '#{session_name}');
+        $result = $this->run('list-panes', '-a', '-F', "#{session_name}\t#{pane_pid}");
 
-        return $result->successful() ? array_values(array_filter(array_map('trim', explode("\n", $result->output())))) : [];
+        if ($result->failed()) {
+            return [];
+        }
+
+        $pids = [];
+
+        foreach (array_filter(explode("\n", trim($result->output()))) as $line) {
+            [$name, $pid] = array_pad(explode("\t", trim($line), 2), 2, 0);
+            $pids[$name] ??= (int) $pid;
+        }
+
+        return $pids;
     }
 
     public function has(string $name): bool

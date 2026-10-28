@@ -4,6 +4,8 @@ return [
 
     'agy_bin' => env('AGY_BIN', 'agy'),
 
+    'password_hash' => env('AGENT_HOST_PASSWORD_HASH', ''),
+
     'defaults' => [
         'agent' => 'auto',
         'claude_model' => 'claude-sonnet-5-5-medium',
