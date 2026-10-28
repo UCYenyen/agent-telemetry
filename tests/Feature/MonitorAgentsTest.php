@@ -20,7 +20,7 @@ class MonitorAgentsTest extends TestCase
         Sleep::fake();
         $this->fakeProcesses(
             pane: "Working\nClaude usage limit reached. https://claude.ai/code/abc123\n",
-            panes: "Agent_one\t100\nAgent_discovered\t200\n",
+            panes: "Agent_one:100\nAgent_discovered:200\n",
             ps: " 100 1 bash\n 200 1 bash\n 201 200 agy --mode accept-edits --model gemini-4-argon-low --remote-control\n 4242 1 agy --mode accept-edits --model gemini-4-argon-low --remote-control\n",
         );
 
@@ -44,7 +44,7 @@ class MonitorAgentsTest extends TestCase
     {
         $this->fakeProcesses(
             pane: 'We talked about agy and the Antigravity CLI here',
-            panes: "Agent_86ddcd36\t300\n",
+            panes: "Agent_86ddcd36:300\n",
             ps: " 300 1 bash\n 301 300 claude --permission-mode auto --model claude-opus-5-5-low --effort medium --autocompact auto -n Multiagent Host --remote-control Multiagent Host\n 302 301 node mcp-server.js\n",
         );
 

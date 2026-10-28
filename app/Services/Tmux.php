@@ -12,7 +12,8 @@ class Tmux
      */
     public function panePids(): array
     {
-        $result = $this->run('list-panes', '-a', '-F', "#{session_name}\t#{pane_pid}");
+        // tmux prints control characters such as tabs as "_", and never allows ":" in a session name
+        $result = $this->run('list-panes', '-a', '-F', '#{session_name}:#{pane_pid}');
 
         if ($result->failed()) {
             return [];
@@ -21,8 +22,12 @@ class Tmux
         $pids = [];
 
         foreach (array_filter(explode("\n", trim($result->output()))) as $line) {
-            [$name, $pid] = array_pad(explode("\t", trim($line), 2), 2, 0);
-            $pids[$name] ??= (int) $pid;
+            $at = strrpos($line, ':');
+            $pid = $at === false ? 0 : (int) substr($line, $at + 1);
+
+            if ($pid > 1) {
+                $pids[substr($line, 0, $at)] ??= $pid;
+            }
         }
 
         return $pids;
