@@ -107,7 +107,14 @@ class AgentSessionManager
 
         $session->save();
 
-        if (! $session->use_openrouter) {
+        if ($session->agent === 'claude') {
+            [$cliModel, $effort] = $this->splitClaudeModel($model);
+            $this->tmux->send($session->name, "/model {$cliModel}");
+
+            if ($effort !== null) {
+                $this->tmux->send($session->name, "/effort {$effort}");
+            }
+        } elseif (! $session->use_openrouter) {
             $this->tmux->send($session->name, "/model {$model}");
         }
     }
@@ -216,15 +223,25 @@ class AgentSessionManager
         }
 
         $defaults = Setting::read('defaults');
+        [$cliModel, $effort] = $this->splitClaudeModel($model);
 
         return sprintf(
             'claude --permission-mode %s --model %s --effort %s --autocompact auto -n %s --remote-control %s',
             escapeshellarg($defaults['permission_mode']),
-            escapeshellarg($model),
-            escapeshellarg($defaults['claude_effort']),
+            escapeshellarg($cliModel),
+            escapeshellarg($effort ?? $defaults['claude_effort']),
             escapeshellarg($title),
             escapeshellarg($title),
         );
+    }
+
+    /**
+     * The picker lists Claude models as "<id>-<effort>", but the CLI only knows the bare id
+     * and takes the effort as its own flag.
+     */
+    private function splitClaudeModel(string $model): array
+    {
+        return preg_match('/^(claude-.+)-(low|medium|high|xhigh|max)$/', $model, $m) ? [$m[1], $m[2]] : [$model, null];
     }
 
     private function replyViaOpenRouter(AgentSession $session, string $text): void
