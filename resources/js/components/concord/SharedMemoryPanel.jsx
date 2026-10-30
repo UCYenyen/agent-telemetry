@@ -42,7 +42,7 @@ export default function SharedMemoryPanel({ room, activeToken, canEdit, onUpdate
             toast('Pinned decision to VPS Shared Memory Bank');
             onUpdated?.();
         } catch (err) {
-            toast(err.message);
+            toast(err.message, 'error');
         } finally {
             setSavingNote(false);
         }
@@ -58,7 +58,7 @@ export default function SharedMemoryPanel({ room, activeToken, canEdit, onUpdate
             toast(`Applied queued edits on ${task.target_device}!`);
             onUpdated?.();
         } catch (err) {
-            toast(err.message);
+            toast(err.message, 'error');
         }
     };
 

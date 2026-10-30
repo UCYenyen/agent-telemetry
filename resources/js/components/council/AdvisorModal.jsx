@@ -16,14 +16,19 @@ function AdvisorForm({ advisor, onClose }) {
         prompt: advisor.prompt ?? '',
     });
     const models = modelsFor(state.models, form.use_openrouter);
+    const [submitting, setSubmitting] = useState(false);
 
     const set = (key) => (value) => setForm((current) => ({ ...current, [key]: value }));
 
-    const submit = (event) => {
+    const submit = async (event) => {
         event.preventDefault();
-        onClose();
+        setSubmitting(true);
         const payload = { ...form, name: form.name.trim(), prompt: form.prompt.trim(), icon: form.icon.trim() || '[MEM]', model: models.includes(form.model) ? form.model : models[0] };
-        run(() => (advisor.id ? api.patch(`/api/advisors/${advisor.id}`, payload) : api.post('/api/advisors', payload)), 'Personality saved to Council roster!');
+        const result = await run(() => (advisor.id ? api.patch(`/api/advisors/${advisor.id}`, payload) : api.post('/api/advisors', payload)), 'Advisor saved');
+        setSubmitting(false);
+        if (result !== null) {
+            onClose();
+        }
     };
 
     return (
@@ -31,7 +36,7 @@ function AdvisorForm({ advisor, onClose }) {
             <div className="field">
                 <label className="check-label">
                     <input type="checkbox" checked={form.use_openrouter} onChange={(event) => set('use_openrouter')(event.target.checked)} />
-                    <span>[OR] USE OPENROUTER API FOR THIS AGENT PERSONALITY</span>
+                    <span>USE OPENROUTER API FOR THIS AGENT PERSONALITY</span>
                 </label>
             </div>
             <div className="grid2">
@@ -69,7 +74,7 @@ function AdvisorForm({ advisor, onClose }) {
                 <button type="button" className="ghost" onClick={onClose}>
                     CANCEL
                 </button>
-                <button type="submit">SAVE PERSONALITY</button>
+                <button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Save advisor'}</button>
             </div>
         </form>
     );

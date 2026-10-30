@@ -57,14 +57,14 @@ export default function ModelPicker({ kind, current, onSelect }) {
                     {GROUPS.map((group) => (
                         <div key={group}>
                             <div className="ow-dropdown-group">
-                                {AGENTS[group].icon} {AGENTS[group].fleet}
+                                {AGENTS[group].fleet}
                             </div>
                             {state.models[group]
                                 .filter((model) => !needle || model.toLowerCase().includes(needle))
                                 .map((model) => (
                                     <button key={model} type="button" className={`ow-dropdown-item${model === current ? ' active' : ''}`} onClick={() => choose(model)}>
                                         <span>
-                                            {AGENTS[group].icon} {model}
+                                            {model}
                                         </span>
                                         {model === current && <span>OK</span>}
                                     </button>

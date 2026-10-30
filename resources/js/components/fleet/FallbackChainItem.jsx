@@ -10,14 +10,14 @@ function KeyBadge({ fallback }) {
     if (fallback.has_key) {
         return (
             <span className="badge fb-on" title="API Key configured">
-                [KEY] {fallback.masked_key || 'KEY SET'}
+                {fallback.masked_key || 'KEY SET'}
             </span>
         );
     }
 
     return (
         <span className="badge openrouter" title="Paste API key in input box and re-add">
-            [WARN] NO API KEY
+            No API key
         </span>
     );
 }

@@ -1,4 +1,38 @@
 /* Concord Multi-Agent Group Chat, VPS Shared Memory & Local Computer Handoff UI */
+/* Concord is a dark console in both OS themes; it re-scopes the base tokens so
+   shared components (buttons, inputs, badges) stay legible inside it. */
+.concord-surface,
+.concord-gate-screen,
+.concord-modal-backdrop {
+    color-scheme: dark;
+    --bg: #0b0c0e;
+    --surface: #111318;
+    --surface-2: #171a21;
+    --surface-hover: #1e222b;
+    --border: #232730;
+    --border-strong: #383e4c;
+    --text: #f3f1ec;
+    --text-2: #a8aebc;
+    --text-3: #8a91a1;
+    --on-accent: #140803;
+    --claude: #ff5722;
+    --claude-dim: rgba(255, 87, 34, 0.12);
+    --agy: #00d2ff;
+    --agy-dim: rgba(0, 210, 255, 0.12);
+    --or: #c084fc;
+    --or-dim: rgba(192, 132, 252, 0.14);
+    --ok: #00e676;
+    --ok-dim: rgba(0, 230, 118, 0.12);
+    --warn: #ffb300;
+    --warn-dim: rgba(255, 179, 0, 0.14);
+    --danger: #ff3366;
+    --ink: var(--text);
+    --muted: var(--text-2);
+    --mono: var(--font-mono);
+    --emerald: #10b981;
+    --amber: #f59e0b;
+    color: var(--text);
+}
 .concord-surface {
     display: flex;
     flex-direction: column;
@@ -53,7 +87,7 @@
 .concord-room-sub {
     display: block;
     font-family: var(--mono);
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     color: var(--muted);
     margin-top: 0.1rem;
 }
@@ -161,7 +195,7 @@
 
 .concord-p-sub {
     font-family: var(--mono);
-    font-size: 0.64rem;
+    font-size: 0.72rem;
     color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
@@ -170,7 +204,7 @@
 
 .concord-p-status {
     font-family: var(--mono);
-    font-size: 0.64rem;
+    font-size: 0.72rem;
     padding: 0.16rem 0.45rem;
     border-radius: 999px;
     background: rgba(16, 185, 129, 0.12);
@@ -192,7 +226,7 @@
     gap: 0.4rem;
     margin-top: 0.42rem;
     font-family: var(--mono);
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     color: #d4d8e8;
     line-height: 1.4;
 }
@@ -207,7 +241,7 @@
 
 .concord-p-files-label {
     font-family: var(--mono);
-    font-size: 0.62rem;
+    font-size: 0.72rem;
     color: var(--muted);
 }
 
@@ -276,7 +310,7 @@
 
 .concord-device-pill {
     font-family: var(--mono);
-    font-size: 0.65rem;
+    font-size: 0.72rem;
     padding: 0.14rem 0.48rem;
     border-radius: 6px;
     background: rgba(16, 185, 129, 0.12);
@@ -286,7 +320,7 @@
 
 .concord-model-pill {
     font-family: var(--mono);
-    font-size: 0.64rem;
+    font-size: 0.72rem;
     padding: 0.12rem 0.45rem;
     border-radius: 6px;
     background: rgba(255, 255, 255, 0.05);
@@ -295,7 +329,7 @@
 
 .concord-handoff-pill {
     font-family: var(--mono);
-    font-size: 0.65rem;
+    font-size: 0.72rem;
     padding: 0.14rem 0.48rem;
     border-radius: 6px;
     background: rgba(99, 102, 241, 0.16);
@@ -305,7 +339,7 @@
 
 .concord-msg-kind {
     font-family: var(--mono);
-    font-size: 0.62rem;
+    font-size: 0.72rem;
     letter-spacing: 0.08em;
     color: var(--muted);
 }
@@ -325,13 +359,13 @@
     gap: 0.5rem;
     flex-wrap: wrap;
     font-family: var(--mono);
-    font-size: 0.7rem;
+    font-size: 0.72rem;
     color: #d1fae5;
     margin-bottom: 0.35rem;
 }
 
 .concord-local-badge {
-    font-size: 0.6rem;
+    font-size: 0.72rem;
     padding: 0.12rem 0.4rem;
     border-radius: 5px;
     background: rgba(16, 185, 129, 0.2);
@@ -351,7 +385,7 @@
     align-items: center;
     gap: 0.45rem;
     font-family: var(--mono);
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     color: var(--muted);
 }
 
@@ -401,7 +435,7 @@
 
 .concord-section-title {
     font-family: var(--mono);
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     font-weight: 700;
     letter-spacing: 0.08em;
     color: var(--ink);
@@ -416,7 +450,7 @@
 
 .concord-badge {
     font-family: var(--mono);
-    font-size: 0.6rem;
+    font-size: 0.72rem;
     padding: 0.12rem 0.42rem;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.07);
@@ -455,7 +489,7 @@
     justify-content: space-between;
     gap: 0.4rem;
     font-family: var(--mono);
-    font-size: 0.64rem;
+    font-size: 0.72rem;
     margin-bottom: 0.25rem;
 }
 
@@ -487,7 +521,7 @@
     display: flex;
     justify-content: space-between;
     font-family: var(--mono);
-    font-size: 0.62rem;
+    font-size: 0.72rem;
     color: var(--muted);
     margin-bottom: 0.35rem;
 }
@@ -500,7 +534,7 @@
 
 .concord-file-chip {
     font-family: var(--mono);
-    font-size: 0.62rem;
+    font-size: 0.72rem;
     padding: 0.1rem 0.35rem;
     border-radius: 4px;
     background: rgba(99, 102, 241, 0.14);
@@ -525,7 +559,7 @@
 .concord-kv-key {
     display: block;
     font-family: var(--mono);
-    font-size: 0.62rem;
+    font-size: 0.72rem;
     color: var(--amber);
     margin-bottom: 0.12rem;
 }
@@ -558,7 +592,7 @@
 
 .concord-decision-author {
     font-family: var(--mono);
-    font-size: 0.62rem;
+    font-size: 0.72rem;
     color: var(--emerald);
     margin-bottom: 0.15rem;
 }
@@ -584,7 +618,7 @@
 
 .concord-claim-owner {
     font-family: var(--mono);
-    font-size: 0.64rem;
+    font-size: 0.72rem;
     color: var(--ink);
     margin-bottom: 0.3rem;
 }
@@ -628,7 +662,7 @@
 
 .concord-modal-kicker {
     font-family: var(--mono);
-    font-size: 0.65rem;
+    font-size: 0.72rem;
     letter-spacing: 0.1em;
     color: var(--emerald);
     margin-bottom: 0.2rem;
@@ -643,7 +677,7 @@
 .concord-label {
     display: block;
     font-family: var(--mono);
-    font-size: 0.66rem;
+    font-size: 0.72rem;
     letter-spacing: 0.08em;
     color: var(--muted);
     margin-bottom: 0.45rem;
@@ -699,7 +733,7 @@
 
 .concord-person-email {
     font-family: var(--mono);
-    font-size: 0.66rem;
+    font-size: 0.72rem;
     color: var(--muted);
 }
 
@@ -754,7 +788,7 @@
 
 .concord-access-check {
     font-family: var(--mono);
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     color: var(--emerald);
 }
 
@@ -820,7 +854,7 @@
     padding: 0.4rem 0.65rem;
     background: rgba(255, 255, 255, 0.04);
     font-family: var(--mono);
-    font-size: 0.62rem;
+    font-size: 0.72rem;
     color: var(--muted);
 }
 
@@ -828,7 +862,7 @@
     margin: 0;
     padding: 0.65rem;
     font-family: var(--mono);
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     color: #a7f3d0;
     overflow-x: auto;
     white-space: pre-wrap;
@@ -882,7 +916,7 @@
     align-items: center;
     justify-content: center;
     font-family: var(--mono);
-    font-size: 0.66rem;
+    font-size: 0.72rem;
     font-weight: 700;
     background: rgba(16, 185, 129, 0.16);
     color: var(--emerald);
@@ -904,14 +938,14 @@
 
 .concord-step-kicker {
     font-family: var(--mono);
-    font-size: 0.58rem;
+    font-size: 0.72rem;
     letter-spacing: 0.08em;
     color: var(--muted);
 }
 
 .concord-step-val {
     font-family: var(--mono);
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
@@ -922,12 +956,54 @@
     color: #fcd34d;
 }
 
+.concord-surface .btn.btn-amber-pulse,
 .btn-amber-pulse {
     background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(234, 88, 12, 0.28));
     border-color: rgba(245, 158, 11, 0.55);
     color: #fef3c7;
     font-weight: 600;
-    box-shadow: 0 0 18px rgba(245, 158, 11, 0.2);
+    box-shadow: 0 6px 18px rgba(245, 158, 11, 0.18);
+}
+
+/* Inside Concord, a plain .btn is secondary; only btn-primary / btn-emerald carry the accent fill. */
+.concord-surface .btn,
+.concord-modal-backdrop .btn,
+.concord-gate-screen .btn {
+    background: var(--surface-2);
+    color: var(--text);
+    border-color: var(--border-strong);
+}
+
+.concord-surface .btn:hover,
+.concord-modal-backdrop .btn:hover {
+    background: var(--surface-hover);
+    border-color: var(--text-2);
+}
+
+.concord-surface .btn.btn-primary,
+.concord-modal-backdrop .btn.btn-primary {
+    background: var(--claude);
+    color: var(--on-accent);
+    border-color: var(--claude);
+}
+
+.concord-surface .btn.btn-emerald,
+.concord-modal-backdrop .btn.btn-emerald,
+.concord-gate-screen .btn.btn-emerald {
+    background: var(--emerald);
+    color: #04140d;
+    border-color: var(--emerald);
+}
+
+.concord-surface .btn.btn-danger,
+.btn-danger {
+    background: rgba(255, 51, 102, 0.12);
+    border-color: rgba(255, 51, 102, 0.5);
+    color: var(--danger);
+}
+
+.btn-danger:hover {
+    background: rgba(255, 51, 102, 0.22);
 }
 
 /* Unlimited Member Chips & Roster Controls */
@@ -954,7 +1030,7 @@
 
 .concord-member-chip {
     font-family: var(--mono);
-    font-size: 0.62rem;
+    font-size: 0.72rem;
     padding: 0.14rem 0.48rem;
     border-radius: 6px;
     background: rgba(255, 255, 255, 0.04);
@@ -1000,7 +1076,7 @@
 
 .concord-you-tag {
     font-family: var(--mono);
-    font-size: 0.6rem;
+    font-size: 0.72rem;
     padding: 0.05rem 0.3rem;
     border-radius: 4px;
     background: rgba(16, 185, 129, 0.22);
@@ -1016,7 +1092,7 @@
     width: 20px;
     height: 20px;
     font-family: var(--mono);
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -1086,7 +1162,7 @@
 .concord-onboard-badge {
     align-self: flex-start;
     font-family: var(--mono);
-    font-size: 0.6rem;
+    font-size: 0.72rem;
     padding: 0.12rem 0.42rem;
     border-radius: 4px;
     background: rgba(99, 102, 241, 0.18);
@@ -1117,7 +1193,7 @@
 
 .concord-mcp-lock-badge {
     font-family: var(--mono);
-    font-size: 0.64rem;
+    font-size: 0.72rem;
     font-weight: 700;
     letter-spacing: 0.08em;
     color: var(--amber);
@@ -1175,7 +1251,7 @@
 .concord-role-pill {
     display: inline-block;
     font-family: var(--mono);
-    font-size: 0.62rem;
+    font-size: 0.72rem;
     font-weight: 700;
     padding: 0.12rem 0.45rem;
     border-radius: 5px;
@@ -1220,3 +1296,8 @@
     }
 }
 
+
+.concord-gate-card label {
+    display: block;
+    margin: 0.75rem 0 0.4rem;
+}

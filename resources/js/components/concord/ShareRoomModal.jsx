@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../../lib/api';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useApp } from '../../context/AppContext';
 
 const ACCESS_MODES = [
@@ -51,6 +52,8 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
     const [bulkText, setBulkText] = useState('');
     const [bulkRole, setBulkRole] = useState('team_member');
     const [saving, setSaving] = useState(false);
+
+    useEscapeKey(open && room, onClose);
 
     if (!open || !room) {
         return null;
@@ -108,7 +111,7 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
             toast(`Added/updated ${res.count || validRows.length} user(s) in "${room.title}"!`);
             onUpdated?.();
         } catch (err) {
-            toast(err.message);
+            toast(err.message, 'error');
         } finally {
             setSaving(false);
         }
@@ -127,7 +130,7 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
             toast(`Bulk added ${res.count || 1} user(s) with role ${bulkRole}!`);
             onUpdated?.();
         } catch (err) {
-            toast(err.message);
+            toast(err.message, 'error');
         } finally {
             setSaving(false);
         }
@@ -149,14 +152,17 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
             toast(`Added ${u.name || u.email} to project with role: ${targetRole}`);
             onUpdated?.();
         } catch (err) {
-            toast(err.message);
+            toast(err.message, 'error');
         } finally {
             setSaving(false);
         }
     };
 
     const handleAccessModeChange = async (nextMode) => {
-        if (!canManageRoom) return;
+        if (!canManageRoom || nextMode === room.access_mode) return;
+        if (nextMode === 'link_edit' && !window.confirm('Let anyone with the link edit this group chat? They can prompt agents and change shared memory without an invite or role.')) {
+            return;
+        }
         setSaving(true);
         try {
             await api.patch(`/api/concord/rooms/${room.id}`, {
@@ -165,7 +171,7 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
             toast(`Link access updated to ${nextMode}`);
             onUpdated?.();
         } catch (err) {
-            toast(err.message);
+            toast(err.message, 'error');
         } finally {
             setSaving(false);
         }
@@ -181,7 +187,7 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
             toast(`Updated member project role to ${nextRole}`);
             onUpdated?.();
         } catch (err) {
-            toast(err.message);
+            toast(err.message, 'error');
         } finally {
             setSaving(false);
         }
@@ -194,17 +200,16 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
             toast('Removed member from project');
             onUpdated?.();
         } catch (err) {
-            toast(err.message);
+            toast(err.message, 'error');
         }
     };
 
     return (
         <div className="concord-modal-backdrop" onClick={onClose}>
-            <div className="concord-modal concord-modal-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="concord-modal concord-modal-wide" role="dialog" aria-modal="true" aria-labelledby="concord-share-title" onClick={(e) => e.stopPropagation()}>
                 <div className="concord-modal-head">
                     <div>
-                        <div className="concord-modal-kicker">UNLIMITED MULTI-USER ROSTER & PER-PROJECT ROLE MANAGEMENT</div>
-                        <h3 className="concord-modal-title">Add Users & Manage Roles: &quot;{room.title}&quot;</h3>
+                        <h3 className="concord-modal-title" id="concord-share-title">Members and roles: {room.title}</h3>
                     </div>
                     <button type="button" className="btn" onClick={onClose}>Close</button>
                 </div>

@@ -22,7 +22,7 @@ export default function SessionCard({ session, onOpenConsole }) {
     };
 
     const stop = () => {
-        if (window.confirm(`Terminate session ${session.name}?`)) {
+        if (window.confirm(`Terminate "${session.title || session.name}" (${session.name})? The agent's tmux session is stopped.`)) {
             run(() => api.delete(url), 'Session terminated.');
         }
     };
@@ -56,15 +56,15 @@ export default function SessionCard({ session, onOpenConsole }) {
             </div>
             <div className="actions">
                 <button type="button" className="prompt-trigger" onClick={() => onOpenConsole(session.id)}>
-                    AI CLAUDE CODE PROMPT
+                    Open console
                 </button>
                 {session.remote_url && (
                     <a href={session.remote_url} target="_blank" rel="noreferrer" className="btn ghost">
                         REMOTE ↗
                     </a>
                 )}
-                <button type="button" className="quiet" onClick={stop} title="Terminate session" aria-label="Terminate session">
-                    X
+                <button type="button" className="quiet" onClick={stop} title="Terminate session" aria-label={`Terminate ${session.title || session.name}`}>
+                    Stop
                 </button>
             </div>
         </li>

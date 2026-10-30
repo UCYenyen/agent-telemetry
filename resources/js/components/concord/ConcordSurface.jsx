@@ -7,6 +7,15 @@ import SharedMemoryPanel from './SharedMemoryPanel';
 import ShareRoomModal from './ShareRoomModal';
 import ConnectDeviceModal from './ConnectDeviceModal';
 
+function activateOnKey(handler) {
+    return (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            handler();
+        }
+    };
+}
+
 export default function ConcordSurface({ initialFullscreen = false }) {
     const { state, reload, toast, sharedToken } = useApp();
     const rooms = state?.concord?.rooms || [];
@@ -21,6 +30,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
     const [sending, setSending] = useState(false);
     const [newRoomTitle, setNewRoomTitle] = useState('');
     const [creatingRoom, setCreatingRoom] = useState(false);
+    const [deletingRoom, setDeletingRoom] = useState(false);
     const [localParticipantId, setLocalParticipantId] = useState('');
 
     const [requiresEmailGate, setRequiresEmailGate] = useState(false);
@@ -118,7 +128,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
             if (err.data?.requires_mcp) {
                 setConnectModalOpen(true);
             }
-            toast(err.message);
+            toast(err.message, 'error');
         } finally {
             setSending(false);
         }
@@ -141,7 +151,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
             fetchRoom();
             reload();
         } catch (err) {
-            toast(err.message);
+            toast(err.message, 'error');
         }
     };
 
@@ -160,9 +170,35 @@ export default function ConcordSurface({ initialFullscreen = false }) {
             reload();
             toast(`Created group chat project "${created.title}" (0 agents connected - connect MCP to begin)`);
         } catch (err) {
-            toast(err.message);
+            toast(err.message, 'error');
         } finally {
             setCreatingRoom(false);
+        }
+    };
+
+    const handleDeleteRoom = async () => {
+        if (!roomDetail || !isAdmin) return;
+        const confirmed = window.confirm(
+            `Delete group chat "${roomDetail.title}"?\n\nThis permanently removes its messages, shared memory, invites and connected MCP agents.`
+        );
+        if (!confirmed) return;
+        setDeletingRoom(true);
+        try {
+            await api.delete(`/api/concord/rooms/${roomDetail.id}`);
+            try {
+                localStorage.removeItem(`concord_mcp_participant_${roomDetail.id}`);
+            } catch {
+                // ignore
+            }
+            const nextRoom = rooms.find((r) => r.id !== roomDetail.id);
+            setSelectedRoomId(nextRoom?.id || null);
+            setRoomDetail(null);
+            reload();
+            toast(`Deleted group chat "${roomDetail.title}"`);
+        } catch (err) {
+            toast(err.message, 'error');
+        } finally {
+            setDeletingRoom(false);
         }
     };
 
@@ -191,19 +227,21 @@ export default function ConcordSurface({ initialFullscreen = false }) {
         return (
             <div className="concord-gate-screen">
                 <form className="concord-gate-card" onSubmit={handleEmailGateSubmit}>
-                    <div className="concord-modal-kicker">[RESTRICTED] INVITE-ONLY MULTI-AGENT PROJECT</div>
                     <h2>{gateInfo?.title || 'Concord Shared Memory Room'}</h2>
                     <p>{gateInfo?.message || 'Enter the email address that was invited by Admin to join this project.'}</p>
+                    <label htmlFor="concord-gate-email">Invited email</label>
                     <input
+                        id="concord-gate-email"
                         type="email"
                         className="input"
-                        placeholder="your-invited-email@domain.com"
+                        autoComplete="email"
+                        placeholder="you@example.com"
                         value={emailInput}
                         onChange={(e) => setEmailInput(e.target.value)}
                         required
                     />
                     <button type="submit" className="btn btn-emerald" style={{ marginTop: '0.75rem', width: '100%' }}>
-                        Verify Invited Email & Join Group Chat
+                        Join group chat
                     </button>
                 </form>
             </div>
@@ -226,7 +264,6 @@ export default function ConcordSurface({ initialFullscreen = false }) {
         <section className={`concord-surface${fullscreen ? ' concord-fullscreen' : ''}`}>
             <header className="concord-topbar">
                 <div className="concord-topbar-left">
-                    <span className="cc-brand-badge">CONCORD // MULTI-AGENT GROUP CHAT</span>
                     <div className="concord-room-titles">
                         <h2 className="concord-room-title">{roomDetail?.title || 'Loading Shared Memory Hub...'}</h2>
                         <span className="concord-room-sub">
@@ -260,15 +297,15 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                                 >
                                     {hasConnectedMcp
                                         ? `MCP Connected (${myParticipants[0].device_name})`
-                                        : '1. Connect Your MCP First'}
+                                        : 'Connect your MCP'}
                                 </button>
                             )}
                             <button
                                 type="button"
-                                className="btn btn-primary"
+                                className="btn"
                                 onClick={() => setShareModalOpen(true)}
                             >
-                                {isAdmin ? `Add / Manage Users (${totalMembers})` : `Team & Roles (${totalMembers})`}
+                                {isAdmin ? `Members (${totalMembers})` : `Team (${totalMembers})`}
                             </button>
                             <button
                                 type="button"
@@ -278,8 +315,18 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                                     'Copied group chat share link!'
                                 )}
                             >
-                                Copy Share Link
+                                Copy link
                             </button>
+                            {isAdmin && !sharedToken && (
+                                <button
+                                    type="button"
+                                    className="btn btn-danger"
+                                    onClick={handleDeleteRoom}
+                                    disabled={deletingRoom}
+                                >
+                                    {deletingRoom ? 'Deleting...' : 'Delete Group Chat'}
+                                </button>
+                            )}
                         </>
                     )}
 
@@ -288,7 +335,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                         className="btn"
                         onClick={() => setFullscreen((prev) => !prev)}
                     >
-                        {fullscreen ? 'Exit Fullscreen' : 'Fullscreen Prompt UI'}
+                        {fullscreen ? 'Exit full screen' : 'Full screen'}
                     </button>
                 </div>
             </header>
@@ -306,7 +353,14 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                         </div>
                     </div>
 
-                    <div className="concord-pipeline-step ready" onClick={() => setShareModalOpen(true)} style={{ cursor: 'pointer' }}>
+                    <div
+                        className="concord-pipeline-step ready"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setShareModalOpen(true)}
+                        onKeyDown={activateOnKey(() => setShareModalOpen(true))}
+                        style={{ cursor: 'pointer' }}
+                    >
                         <span className="concord-step-num">02</span>
                         <div className="concord-step-body">
                             <span className="concord-step-kicker">UNLIMITED USERS ROSTER</span>
@@ -318,7 +372,10 @@ export default function ConcordSurface({ initialFullscreen = false }) {
 
                     <div
                         className={`concord-pipeline-step ${hasConnectedMcp ? 'ready' : 'locked'}`}
+                        role={canEdit ? 'button' : undefined}
+                        tabIndex={canEdit ? 0 : undefined}
                         onClick={() => canEdit && setConnectModalOpen(true)}
+                        onKeyDown={canEdit ? activateOnKey(() => setConnectModalOpen(true)) : undefined}
                         style={{ cursor: canEdit ? 'pointer' : 'default' }}
                     >
                         <span className="concord-step-num">03</span>

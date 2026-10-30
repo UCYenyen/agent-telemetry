@@ -57,10 +57,10 @@ export default function AdvisorCard({ advisor, onEdit }) {
 
             <div className="advisor-card-foot">
                 <button type="button" className="quiet muted btn-xs" onClick={onEdit}>
-                    EDIT EDIT LENS
+                    Edit lens
                 </button>
                 <button type="button" className="quiet btn-xs" onClick={remove}>
-                    X REMOVE
+                    Remove
                 </button>
             </div>
         </div>

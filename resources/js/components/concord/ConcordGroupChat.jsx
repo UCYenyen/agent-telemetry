@@ -332,7 +332,6 @@ export default function ConcordGroupChat({
             <div className="concord-feed" ref={feedRef}>
                 {messages.length === 0 && (
                     <div className="concord-onboarding-card">
-                        <div className="concord-modal-kicker">CONCORD MULTI-USER & MULTI-MCP ARCHITECTURE</div>
                         <h3 className="concord-onboarding-title">How Multi-User MCP Collaboration Works</h3>
                         <p className="concord-onboarding-sub">
                             Every group chat starts with <strong>0 default agents</strong> and supports <strong>unlimited users and computers</strong> (2, 3, 5, 10+ simultaneous collaborators).

@@ -2,7 +2,7 @@ import { isRunning } from '../../lib/council';
 import PanelHeader from '../common/PanelHeader';
 
 function roomMeta(room) {
-    const status = isRunning(room) ? `[FAST] ${room.status.replace(/_/g, ' ').toUpperCase()}` : room.status === 'interrupted' ? '[WARN] INTERRUPTED' : 'OK VERDICT READY';
+    const status = isRunning(room) ? `${room.status.replace(/_/g, ' ').toUpperCase()}` : room.status === 'interrupted' ? 'INTERRUPTED' : 'VERDICT READY';
 
     return `${status} · ${room.messages_count} entries`;
 }
@@ -22,11 +22,16 @@ export default function RoomList({ rooms, activeId, onSelect, onNew, onDelete })
                     </li>
                 )}
                 {rooms.map((room) => (
-                    <li key={room.id} className={`room-item${room.id === activeId ? ' active' : ''}`} onClick={() => onSelect(room.id)}>
-                        <div className="room-item-body">
-                            <div className="room-item-title">{room.title}</div>
-                            <div className="room-item-meta">{roomMeta(room)}</div>
-                        </div>
+                    <li key={room.id} className={`room-item${room.id === activeId ? ' active' : ''}`}>
+                        <button
+                            type="button"
+                            className="room-item-body"
+                            onClick={() => onSelect(room.id)}
+                            aria-current={room.id === activeId ? 'true' : undefined}
+                        >
+                            <span className="room-item-title">{room.title}</span>
+                            <span className="room-item-meta">{roomMeta(room)}</span>
+                        </button>
                         <button
                             type="button"
                             className="quiet btn-xs"
@@ -35,9 +40,9 @@ export default function RoomList({ rooms, activeId, onSelect, onNew, onDelete })
                                 onDelete(room.id);
                             }}
                             title="Delete room"
-                            aria-label="Delete room"
+                            aria-label={`Delete room ${room.title}`}
                         >
-                            X
+                            Delete
                         </button>
                     </li>
                 ))}

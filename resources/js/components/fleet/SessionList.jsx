@@ -13,7 +13,7 @@ export default function SessionList({ onOpenConsole }) {
             <ul className="sessions-list">
                 {state.sessions.length === 0 && (
                     <li className="session-card">
-                        <span className="empty-row">No active agent sessions detected. Click "+ DEPLOY SESSION" to initialize.</span>
+                        <span className="empty-row">No active agent sessions detected. Use "Deploy session" above to start one.</span>
                     </li>
                 )}
                 {state.sessions.map((session) => (

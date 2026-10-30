@@ -15,31 +15,37 @@ const ENGINES = [
 function DeployForm({ onClose }) {
     const { state, run, toast } = useApp();
     const [form, setForm] = useState({ title: '', agent: 'auto', model: '', workdir: state.defaults.workdir || '/root' });
+    const [submitting, setSubmitting] = useState(false);
     const models = modelsForAgent(state.models, form.agent);
     const useOpenRouter = form.agent === 'openrouter';
 
     const set = (key) => (value) => setForm((current) => ({ ...current, [key]: value }));
 
-    const submit = (event) => {
+    const submit = async (event) => {
         event.preventDefault();
-        onClose();
-        toast('Deploying new agent instance…');
-        run(
+        setSubmitting(true);
+        toast('Deploying session…');
+        const result = await run(
             () => api.post('/api/sessions', { ...form, title: form.title.trim(), workdir: form.workdir.trim(), model: form.model || models[0], use_openrouter: useOpenRouter }),
-            'Instance deployed!',
+            'Session deployed',
         );
+        setSubmitting(false);
+        // Keep the form open on failure so nothing has to be retyped.
+        if (result !== null) {
+            onClose();
+        }
     };
 
     return (
         <form onSubmit={submit}>
             <div className="field">
-                <label htmlFor="new-title">Session Designation</label>
+                <label htmlFor="new-title">Session name</label>
                 <input type="text" id="new-title" placeholder="e.g. CeDX MCP or Core Refactor" value={form.title} onChange={(event) => set('title')(event.target.value)} required />
             </div>
             <div className="field">
                 <label className="check-label boxed">
                     <input type="checkbox" checked={useOpenRouter} onChange={(event) => setForm((current) => ({ ...current, agent: event.target.checked ? 'openrouter' : 'auto', model: '' }))} />
-                    <span>[OR] USE OPENROUTER API FOR THIS AGENT (TOGGLE)</span>
+                    <span>USE OPENROUTER API FOR THIS AGENT (TOGGLE)</span>
                 </label>
             </div>
             <div className="grid2">
@@ -64,9 +70,9 @@ function DeployForm({ onClose }) {
             </div>
             <div className="foot">
                 <button type="button" className="ghost" onClick={onClose}>
-                    ABORT
+                    Cancel
                 </button>
-                <button type="submit">LAUNCH INSTANCE</button>
+                <button type="submit" disabled={submitting}>{submitting ? 'Deploying…' : 'Deploy session'}</button>
             </div>
         </form>
     );

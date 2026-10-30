@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useApp } from '../../context/AppContext';
 
 export default function ConnectDeviceModal({
@@ -57,6 +58,8 @@ export default function ConnectDeviceModal({
             setSelectedParticipantId('');
         }
     }, [open, currentUser, visitorEmail, room?.viewer_email, myParticipants]);
+
+    useEscapeKey(open && room, onClose);
 
     if (!open || !room) {
         return null;
@@ -145,7 +148,7 @@ export default function ConnectDeviceModal({
             toast(`MCP Connected & Verified for ${res.participant.user_name} (${res.participant.device_name})! Prompting is now unlocked.`);
             onConnected?.(res.participant);
         } catch (err) {
-            toast(err.message);
+            toast(err.message, 'error');
         } finally {
             setSubmitting(false);
         }
@@ -155,11 +158,10 @@ export default function ConnectDeviceModal({
 
     return (
         <div className="concord-modal-backdrop" onClick={onClose}>
-            <div className="concord-modal concord-modal-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="concord-modal concord-modal-wide" role="dialog" aria-modal="true" aria-labelledby="concord-connect-title" onClick={(e) => e.stopPropagation()}>
                 <div className="concord-modal-head">
                     <div>
-                        <div className="concord-modal-kicker">MANDATORY PRE-FLIGHT STEP // MCP CONNECTION & LOCAL COMPUTER BRIDGE</div>
-                        <h3 className="concord-modal-title">Connect Your Local MCP Agent to Unlock Group Prompting</h3>
+                        <h3 className="concord-modal-title" id="concord-connect-title">Connect your local MCP agent</h3>
                     </div>
                     <button type="button" className="btn" onClick={onClose}>Close</button>
                 </div>

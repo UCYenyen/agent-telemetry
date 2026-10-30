@@ -9,6 +9,7 @@ export function AppProvider({ children }) {
     const [state, setState] = useState(null);
     const [syncedAt, setSyncedAt] = useState(null);
     const [message, setMessage] = useState(null);
+    const [tone, setTone] = useState('info');
     const toastTimer = useRef(null);
 
     const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -23,10 +24,11 @@ export function AppProvider({ children }) {
         }
     }, []);
 
-    const toast = useCallback((text) => {
+    const toast = useCallback((text, nextTone = 'info') => {
         clearTimeout(toastTimer.current);
         setMessage(text);
-        toastTimer.current = setTimeout(() => setMessage(null), 3500);
+        setTone(nextTone);
+        toastTimer.current = setTimeout(() => setMessage(null), nextTone === 'error' ? 7000 : 3500);
     }, []);
 
     const run = useCallback(async (action, success) => {
@@ -38,7 +40,7 @@ export function AppProvider({ children }) {
             await reload();
             return result;
         } catch (error) {
-            toast(error.message);
+            toast(error.message, 'error');
             return null;
         }
     }, [reload, toast]);
@@ -52,7 +54,7 @@ export function AppProvider({ children }) {
     return (
         <AppContext.Provider value={{ state, syncedAt, reload, toast, run, sharedToken }}>
             {children}
-            <Toast message={message} />
+            <Toast message={message} tone={tone} />
         </AppContext.Provider>
     );
 }

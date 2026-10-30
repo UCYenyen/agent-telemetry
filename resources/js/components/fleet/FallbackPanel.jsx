@@ -13,7 +13,7 @@ export default function FallbackPanel() {
     return (
         <aside className="panel">
             <PanelHeader index="02" title="Cascading Fallback Chain">
-                <span className={`badge ${hasKey ? 'fb-on' : 'openrouter'}`}>{hasKey ? `[KEY] KEY ARMED (${maskedKey})` : '[WARN] PASTE API KEY'}</span>
+                <span className={`badge ${hasKey ? 'fb-on' : 'openrouter'}`}>{hasKey ? `KEY ARMED (${maskedKey})` : 'PASTE API KEY'}</span>
             </PanelHeader>
             <div className="config-body">
                 <CascadePipeline primary={state.defaults.claude_model} fallbacks={state.fallbacks} />

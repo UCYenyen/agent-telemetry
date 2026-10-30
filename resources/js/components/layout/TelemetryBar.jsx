@@ -8,8 +8,9 @@ export default function TelemetryBar() {
     return (
         <div className="telemetry-bar">
             <div className="telemetry-left">
-                <span className="sys-pill">
-                    <span className="pulse-dot" /> TELEMETRY ONLINE
+                <span className={`sys-pill${syncedAt === false ? ' offline' : syncedAt === null ? ' syncing' : ''}`} role="status">
+                    <span className="pulse-dot" aria-hidden="true" />
+                    {syncedAt === false ? 'OFFLINE' : syncedAt === null ? 'CONNECTING' : 'ONLINE'}
                 </span>
                 <span>ROLE: {(state?.user?.role || 'no_role').toUpperCase()}</span>
                 {isAdmin && <span>VPS SESSIONS: {state?.sessions?.length ?? 0}</span>}
@@ -20,7 +21,7 @@ export default function TelemetryBar() {
             <div className="telemetry-right">
                 <span>
                     {syncedAt === null && 'SYNCING...'}
-                    {syncedAt === false && 'TELEMETRY OFFLINE'}
+                    {syncedAt === false && 'SYNC FAILED, RETRYING'}
                     {syncedAt && `LAST SYNC // ${syncedAt.toLocaleTimeString()}`}
                 </span>
             </div>

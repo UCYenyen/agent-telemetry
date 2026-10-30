@@ -9,20 +9,24 @@ export default function ModeNav({ surface, onChange }) {
 
     const tabs = isAdmin
         ? [
-              { id: 'deck', label: '01 // FLEET & 3-STAGE FAILOVER DECK (ADMIN ONLY)', count: sessionCount },
-              { id: 'concord', label: '02 // CONCORD MULTI-AGENT GROUP CHAT (SHARED MEMORY + LOCAL PC)', count: `${concordRoomsCount} LIVE` },
-              { id: 'council', label: '03 // LLM COUNCIL WAR ROOM (ADMIN ONLY)', count: `${armedCount} ARMED` },
+              { id: 'deck', label: 'Fleet', count: sessionCount, hint: `${sessionCount} agent sessions` },
+              { id: 'concord', label: 'Group chat', count: concordRoomsCount, hint: `${concordRoomsCount} rooms` },
+              { id: 'council', label: 'Council', count: armedCount, hint: `${armedCount} advisors armed` },
           ]
-        : [
-              { id: 'concord', label: '01 // CONCORD MULTI-AGENT GROUP CHAT (SHARED MEMORY + LOCAL PC)', count: `${concordRoomsCount} LIVE` },
-          ];
+        : [{ id: 'concord', label: 'Group chat', count: concordRoomsCount, hint: `${concordRoomsCount} rooms` }];
 
     return (
-        <nav className="mode-nav">
+        <nav className="mode-nav" aria-label="Sections">
             {tabs.map((tab) => (
-                <button key={tab.id} type="button" className={`mode-tab${surface === tab.id ? ' active' : ''}`} onClick={() => onChange(tab.id)}>
+                <button
+                    key={tab.id}
+                    type="button"
+                    className={`mode-tab${surface === tab.id ? ' active' : ''}`}
+                    aria-current={surface === tab.id ? 'page' : undefined}
+                    onClick={() => onChange(tab.id)}
+                >
                     <span>{tab.label}</span>
-                    <span className="mode-count">{tab.count}</span>
+                    <span className="mode-count" title={tab.hint} aria-label={tab.hint}>{tab.count}</span>
                 </button>
             ))}
         </nav>

@@ -13,30 +13,29 @@ export default function Masthead({ onRefresh, onDeploy }) {
     return (
         <header className="masthead">
             <div>
-                <div className="brand-eyebrow">Claude / Antigravity / Concord Multi-Agent Hub / Autonomous LLM Council</div>
                 <h1 className="brand-title">
                     Agent <em>Host</em> Command
                 </h1>
                 <div className="brand-sub">
-                    Unified orchestration deck with VPS Shared Memory Group Chat, Local Computer Handoffs, and Role-Based Access Control.
+                    Run Claude, Antigravity and OpenRouter agents on the VPS, coordinate them in group chat, and put questions to the council.
                 </div>
             </div>
             <div className="masthead-controls">
                 {user?.name && (
-                    <span className="concord-device-pill" style={{ padding: '0.45rem 0.7rem' }} title={user.email || ''}>
-                        USER: {user.name} [ROLE: {(user.role || 'no_role').toUpperCase()}]
+                    <span className="user-pill" title={user.email || ''}>
+                        {user.name} <strong>{(user.role || 'no_role').replace('_', ' ')}</strong>
                     </span>
                 )}
                 <button type="button" className="ghost" onClick={onRefresh}>
-                    SYNC TELEMETRY
+                    Refresh
                 </button>
                 {isAdmin && (
                     <button type="button" onClick={onDeploy}>
-                        + DEPLOY VPS SESSION
+                        Deploy session
                     </button>
                 )}
                 <button type="button" className="ghost" onClick={signOut}>
-                    SIGN OUT
+                    Sign out
                 </button>
             </div>
         </header>

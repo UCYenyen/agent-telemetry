@@ -12,7 +12,7 @@ import TerminalPane from './TerminalPane';
 const QUICK_ACTIONS = [
     { icon: '*', label: 'Show Thinking & Plan', value: 'Walk me through your step-by-step thinking and implementation plan before making edits.' },
     { icon: '>', label: 'Summarize Changes', value: 'Summarize the files you have modified and any remaining tasks.' },
-    { icon: '[FAST]', label: 'Run Tests', value: 'Run the test suite and verify everything passes.' },
+    { icon: '', label: 'Run Tests', value: 'Run the test suite and verify everything passes.' },
     { icon: '⇄', label: 'Prepare Handoff', value: 'Prepare a clean handoff summary of your changes and API contracts for the other agents.' },
 ];
 
@@ -67,8 +67,8 @@ function ConsoleBody({ sessionId, onSelectSession, onClose }) {
         try {
             await api.post(`${url}/messages`, { text });
             toast('Prompt transmitted to agent');
-        } catch {
-            toast('Recorded in session history');
+        } catch (err) {
+            toast(`Prompt not delivered: ${err.message}`, 'error');
         }
 
         await fetchHistory();
