@@ -239,7 +239,10 @@ class AgentSessionManager
             $responseLines[] = $rawLine;
         }
 
-        $isWorking = $session->state === 'working' || (bool) preg_match(self::WORKING, $pane);
+        // A Claude Code spinner line ("✻ Thinking about…") means a turn is still in progress.
+        $isWorking = $session->state === 'working'
+            || (bool) preg_match(self::WORKING, $pane)
+            || (bool) preg_match('/^\s*[✻✺✹✸✷✶]\s*Thinking\b/mu', $pane);
 
         if (! $currentThought) {
             $currentThought = $isWorking

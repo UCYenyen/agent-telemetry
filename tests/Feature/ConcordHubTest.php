@@ -44,8 +44,9 @@ class ConcordHubTest extends TestCase
             ->assertJsonPath('user.role', 'admin')
             ->assertJsonPath('concord.rooms.0.title', 'Concord Multi-Agent Shared Workspace');
 
+        // Rooms start empty: each user connects their own MCP agent before prompting.
         $room = ConcordRoom::firstOrFail();
-        $this->assertGreaterThanOrEqual(2, $room->participants()->count());
+        $this->assertSame(0, $room->participants()->count());
 
         // Non-admin user cannot view or create VPS Fleet sessions
         $regularRes = $this->authenticateRegularUser()->getJson('/api/state');
@@ -133,8 +134,24 @@ class ConcordHubTest extends TestCase
             'access_mode' => 'link_edit',
         ])->assertOk();
 
+        // Prompting is locked until the sender has connected an MCP agent.
+        $this->postJson("/api/concord/shared/{$room->share_token}/messages", [
+            'sender_name' => 'User 1 (Bryan)',
+            'body' => 'Prompt before connecting MCP',
+        ])->assertStatus(422)
+            ->assertJsonPath('requires_mcp', true);
+
+        foreach ([['User 1 (Bryan)', 'user1@partner.dev', 'User-1-Workstation'], ['User 2', 'user2@partner.dev', 'User-2-Laptop']] as [$userName, $email, $device]) {
+            $this->postJson("/api/concord/shared/{$room->share_token}/register-device", [
+                'user_name' => $userName,
+                'account_email' => $email,
+                'device_name' => $device,
+            ])->assertOk();
+        }
+
         $response = $this->postJson("/api/concord/shared/{$room->share_token}/messages", [
             'sender_name' => 'User 1 (Bryan)',
+            'sender_email' => 'user1@partner.dev',
             'sender_device' => 'User-1-Workstation',
             'target_agent' => 'all',
             'body' => 'Implement the shared telemetry sync endpoint and update the React client.',
