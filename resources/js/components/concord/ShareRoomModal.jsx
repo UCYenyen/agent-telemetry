@@ -13,13 +13,13 @@ const ACCESS_MODES = [
         id: 'link_view',
         badge: '[LINK VIEW]',
         title: 'Anyone with the link - Can view (Enforces Project Role for Editing)',
-        subtitle: 'Anyone with the link can view as no_role (read-only). Only Admin and invited members with role team_member can edit and send prompts.',
+        subtitle: 'Anyone with the link can view as no_role (read-only). Only Admin and invited members with role team_member can connect MCP and prompt.',
     },
     {
         id: 'link_edit',
         badge: '[LINK EDIT]',
         title: 'Anyone with the link - Can edit (Bypasses Role Check)',
-        subtitle: 'Per-project role check is bypassed: anyone opening this link is granted team_member edit capabilities to prompt and connect their local PC.',
+        subtitle: 'Per-project role check is bypassed: anyone opening this link is granted team_member edit capabilities to connect their MCP and prompt.',
     },
 ];
 
@@ -27,24 +27,29 @@ const DEFAULT_ROLES_CATALOG = [
     {
         id: 'admin',
         title: 'admin (Platform & Project Owner)',
-        description: 'Full control over all 3 capabilities: (1) Can view and control live VPS Claude / Antigravity Fleet sessions & Council, (2) Can create/delete Group Chat projects and invite users or assign per-project roles (team_member or no_role), and (3) Can view and edit all Group Chat projects.',
+        description: 'Full control over all 3 capabilities: (1) Can view and control live VPS Claude / Antigravity Fleet sessions & Council, (2) Can create/delete Group Chat projects and invite unlimited users or assign per-project roles (team_member or no_role), and (3) Can view and edit all Group Chat projects.',
     },
     {
         id: 'team_member',
         title: 'team_member (Project Editor & Active Group Chat User)',
-        description: 'Can both view and edit inside the assigned Group Chat project: send prompts, coordinate multi-agent handoffs, connect their local computer / CLI agent so code changes run on their PC, and update VPS Shared Memory. Cannot view Admin live VPS Fleet sessions or create new projects.',
+        description: 'Can both view and edit inside the assigned Group Chat project: connect their local MCP agent first, send prompts, coordinate multi-agent handoffs across unlimited computers, and update VPS Shared Memory.',
     },
     {
         id: 'no_role',
         title: 'no_role (Default - Read-Only Group Chat Viewer)',
-        description: 'Default role assigned to all users. Can only view the Group Chat in read-only mode (watch live agent talks, reasoning steps, and shared memory). Cannot send prompts or edit unless upgraded to team_member by Admin or the project link mode is set to Anyone with the link can edit.',
+        description: 'Default role assigned to all users. Can only view the Group Chat in read-only mode (watch live agent talks, reasoning steps, and shared memory). Cannot connect an editing MCP or send prompts unless upgraded to team_member by Admin or the project link mode is set to Anyone with the link can edit.',
     },
 ];
 
 export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
     const { toast } = useApp();
-    const [email, setEmail] = useState('');
-    const [role, setRole] = useState('no_role');
+    const [rows, setRows] = useState([
+        { email: '', name: '', role: 'team_member' },
+        { email: '', name: '', role: 'team_member' },
+        { email: '', name: '', role: 'no_role' },
+    ]);
+    const [bulkText, setBulkText] = useState('');
+    const [bulkRole, setBulkRole] = useState('team_member');
     const [saving, setSaving] = useState(false);
 
     if (!open || !room) {
@@ -54,6 +59,9 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
     const canManageRoom = Boolean(room.can_manage_room || room.global_role === 'admin');
     const shareUrl = room.share_url || `${window.location.origin}/?room=${room.share_token}`;
     const rolesCatalog = room.roles_catalog?.length ? room.roles_catalog : DEFAULT_ROLES_CATALOG;
+    const platformUsers = room.platform_users || [];
+    const invites = room.invites || [];
+    const participants = room.participants || [];
 
     const copyText = async (text, label) => {
         try {
@@ -61,6 +69,89 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
             toast(label);
         } catch {
             toast(`Copy: ${text}`);
+        }
+    };
+
+    const handleRowChange = (index, field, value) => {
+        setRows((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+    };
+
+    const handleAddRow = () => {
+        setRows((prev) => [...prev, { email: '', name: '', role: 'team_member' }]);
+    };
+
+    const handleRemoveRow = (index) => {
+        setRows((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+    };
+
+    const handleBatchInviteRows = async (event) => {
+        event.preventDefault();
+        if (!canManageRoom) return;
+        const validRows = rows
+            .map((r) => ({ email: r.email.trim(), name: r.name.trim() || undefined, role: r.role }))
+            .filter((r) => r.email !== '');
+
+        if (validRows.length === 0) {
+            toast('Enter at least one email or username to add.');
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const res = await api.post(`/api/concord/rooms/${room.id}/invites`, {
+                invites: validRows,
+            });
+            setRows([
+                { email: '', name: '', role: 'team_member' },
+                { email: '', name: '', role: 'team_member' },
+            ]);
+            toast(`Added/updated ${res.count || validRows.length} user(s) in "${room.title}"!`);
+            onUpdated?.();
+        } catch (err) {
+            toast(err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleBulkInviteSubmit = async (event) => {
+        event.preventDefault();
+        if (!bulkText.trim() || !canManageRoom) return;
+        setSaving(true);
+        try {
+            const res = await api.post(`/api/concord/rooms/${room.id}/invites`, {
+                email: bulkText.trim(),
+                role: bulkRole,
+            });
+            setBulkText('');
+            toast(`Bulk added ${res.count || 1} user(s) with role ${bulkRole}!`);
+            onUpdated?.();
+        } catch (err) {
+            toast(err.message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleQuickAddPlatformUser = async (u, targetRole) => {
+        if (!canManageRoom) return;
+        setSaving(true);
+        try {
+            await api.post(`/api/concord/rooms/${room.id}/invites`, {
+                invites: [
+                    {
+                        email: u.email,
+                        name: u.name || u.username,
+                        role: targetRole,
+                    },
+                ],
+            });
+            toast(`Added ${u.name || u.email} to project with role: ${targetRole}`);
+            onUpdated?.();
+        } catch (err) {
+            toast(err.message);
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -72,26 +163,6 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
                 access_mode: nextMode,
             });
             toast(`Link access updated to ${nextMode}`);
-            onUpdated?.();
-        } catch (err) {
-            toast(err.message);
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    const handleInviteEmail = async (event) => {
-        event.preventDefault();
-        if (!email.trim() || !canManageRoom) return;
-        setSaving(true);
-        try {
-            const res = await api.post(`/api/concord/rooms/${room.id}/invites`, {
-                email: email.trim(),
-                role,
-            });
-            const invited = res.invite || res;
-            setEmail('');
-            toast(`Invited ${invited.email} with project role: ${invited.role}`);
             onUpdated?.();
         } catch (err) {
             toast(err.message);
@@ -132,49 +203,167 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
             <div className="concord-modal concord-modal-wide" onClick={(e) => e.stopPropagation()}>
                 <div className="concord-modal-head">
                     <div>
-                        <div className="concord-modal-kicker">PROJECT SHARING & PER-PROJECT ROLE MANAGEMENT</div>
-                        <h3 className="concord-modal-title">Share & Manage Roles: "{room.title}"</h3>
+                        <div className="concord-modal-kicker">UNLIMITED MULTI-USER ROSTER & PER-PROJECT ROLE MANAGEMENT</div>
+                        <h3 className="concord-modal-title">Add Users & Manage Roles: &quot;{room.title}&quot;</h3>
                     </div>
                     <button type="button" className="btn" onClick={onClose}>Close</button>
                 </div>
 
                 {/* Detailed 3-Role Reference Guide */}
                 <div className="concord-people-section" style={{ marginBottom: '1rem' }}>
-                    <div className="concord-label">ROLE PERMISSIONS SPECIFICATION (DEFAULT ROLE: no_role)</div>
-                    <div className="concord-access-grid">
+                    <div className="concord-label">ROLE PERMISSIONS SPECIFICATION (DEFAULT ROLE: no_role // UNLIMITED USERS SUPPORTED)</div>
+                    <div className="concord-roles-matrix-grid">
                         {rolesCatalog.map((r) => (
-                            <div key={r.id} className="concord-access-card" style={{ cursor: 'default' }}>
-                                <span className="concord-role-pill">{r.id.toUpperCase()}</span>
-                                <div className="concord-access-body">
-                                    <div className="concord-access-title">{r.title}</div>
-                                    <div className="concord-access-sub">{r.description}</div>
-                                </div>
+                            <div key={r.id} className="concord-role-spec-card">
+                                <span className={`concord-role-pill ${r.id === 'admin' ? 'owner' : ''}`}>{r.id.toUpperCase()}</span>
+                                <div className="concord-access-title" style={{ marginTop: '0.35rem' }}>{r.title}</div>
+                                <div className="concord-access-sub" style={{ marginTop: '0.2rem' }}>{r.description}</div>
                             </div>
                         ))}
                     </div>
                 </div>
 
                 {canManageRoom ? (
-                    <form className="concord-invite-form" onSubmit={handleInviteEmail}>
-                        <label className="concord-label">ADMIN ONLY // INVITE USER BY EMAIL & SET PROJECT ROLE</label>
-                        <div className="concord-invite-row">
-                            <input
-                                type="email"
-                                className="input"
-                                placeholder="teammate@company.com or partner@account.dev"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                required
-                            />
-                            <select className="select concord-role-select" value={role} onChange={(e) => setRole(e.target.value)}>
-                                <option value="no_role">no_role (Default - View Only)</option>
-                                <option value="team_member">team_member (Can Edit & Use Chat)</option>
-                            </select>
-                            <button type="submit" className="btn btn-emerald" disabled={saving}>
-                                + Invite Member
-                            </button>
+                    <div className="concord-connect-grid" style={{ marginBottom: '1rem' }}>
+                        {/* Left: Multi-Row Builder + Bulk Paste */}
+                        <div className="concord-connect-card">
+                            <form onSubmit={handleBatchInviteRows}>
+                                <div className="concord-section-head" style={{ marginBottom: '0.5rem' }}>
+                                    <span className="concord-label" style={{ marginBottom: 0 }}>
+                                        ADMIN // ADD MULTIPLE USERS AT ONCE (UNLIMITED)
+                                    </span>
+                                    <button type="button" className="btn btn-xs" onClick={handleAddRow}>
+                                        + Add Another User Row
+                                    </button>
+                                </div>
+                                <div className="concord-multi-invite-rows">
+                                    {rows.map((row, idx) => (
+                                        <div key={idx} className="concord-multi-invite-row">
+                                            <input
+                                                type="text"
+                                                className="input"
+                                                placeholder={`User ${idx + 1} email or username...`}
+                                                value={row.email}
+                                                onChange={(e) => handleRowChange(idx, 'email', e.target.value)}
+                                            />
+                                            <input
+                                                type="text"
+                                                className="input"
+                                                placeholder="Display name (opt)"
+                                                value={row.name}
+                                                onChange={(e) => handleRowChange(idx, 'name', e.target.value)}
+                                            />
+                                            <select
+                                                className="select"
+                                                value={row.role}
+                                                onChange={(e) => handleRowChange(idx, 'role', e.target.value)}
+                                            >
+                                                <option value="team_member">team_member (Can Edit)</option>
+                                                <option value="no_role">no_role (View Only)</option>
+                                            </select>
+                                            {rows.length > 1 && (
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-xs btn-danger"
+                                                    onClick={() => handleRemoveRow(idx)}
+                                                >
+                                                    x
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                                <button type="submit" className="btn btn-emerald" style={{ width: '100%', marginTop: '0.55rem' }} disabled={saving}>
+                                    {saving ? 'Adding Users...' : `+ Add All Filled Users to Project`}
+                                </button>
+                            </form>
+
+                            <form onSubmit={handleBulkInviteSubmit} style={{ marginTop: '0.85rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+                                <label className="concord-label">BULK PASTE EMAILS OR USERNAMES (COMMA OR SPACE SEPARATED)</label>
+                                <div className="concord-invite-row" style={{ marginBottom: 0 }}>
+                                    <input
+                                        type="text"
+                                        className="input"
+                                        placeholder="user1@team.com, user2@team.com, user3@team.com, user4@team.com..."
+                                        value={bulkText}
+                                        onChange={(e) => setBulkText(e.target.value)}
+                                    />
+                                    <select className="select" value={bulkRole} onChange={(e) => setBulkRole(e.target.value)}>
+                                        <option value="team_member">team_member</option>
+                                        <option value="no_role">no_role</option>
+                                    </select>
+                                    <button type="submit" className="btn btn-primary" disabled={saving}>
+                                        Bulk Add
+                                    </button>
+                                </div>
+                            </form>
                         </div>
-                    </form>
+
+                        {/* Right: Registered Platform Accounts Directory (1-Click Add) */}
+                        <div className="concord-connect-card">
+                            <div className="concord-label">
+                                REGISTERED PLATFORM USERS DIRECTORY ({platformUsers.length}) — 1-CLICK ADD TO PROJECT
+                            </div>
+                            <div className="concord-people-list" style={{ maxHeight: '260px', overflowY: 'auto', marginBottom: 0 }}>
+                                {platformUsers.length === 0 ? (
+                                    <div className="concord-empty-box">No registered user accounts found.</div>
+                                ) : (
+                                    platformUsers.map((u) => {
+                                        const existingInvite = invites.find(
+                                            (inv) => String(inv.email || '').toLowerCase() === String(u.email || '').toLowerCase()
+                                        );
+                                        const isOwner = String(room.owner_email || '').toLowerCase() === String(u.email || '').toLowerCase();
+                                        const currentProjRole = isOwner
+                                            ? 'admin'
+                                            : existingInvite
+                                              ? (existingInvite.role === 'editor' ? 'team_member' : existingInvite.role)
+                                              : null;
+
+                                        return (
+                                            <div key={u.id} className="concord-person-row">
+                                                <div className="concord-person-avatar">
+                                                    {(u.name || u.username || u.email || 'U').slice(0, 2).toUpperCase()}
+                                                </div>
+                                                <div className="concord-person-info">
+                                                    <div className="concord-person-name">
+                                                        {u.name} <code>@{u.username}</code>
+                                                    </div>
+                                                    <div className="concord-person-email">
+                                                        {u.email} // Platform Role: <strong>{u.role}</strong>
+                                                        {currentProjRole ? ` // In Project: ${currentProjRole}` : ''}
+                                                    </div>
+                                                </div>
+                                                <div className="concord-person-actions">
+                                                    {isOwner ? (
+                                                        <span className="concord-role-pill owner">Owner (admin)</span>
+                                                    ) : (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                className={`btn btn-xs ${currentProjRole === 'team_member' ? 'btn-emerald' : ''}`}
+                                                                onClick={() => handleQuickAddPlatformUser(u, 'team_member')}
+                                                                disabled={saving}
+                                                            >
+                                                                {currentProjRole === 'team_member' ? 'team_member [Active]' : '+ team_member'}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className={`btn btn-xs ${currentProjRole === 'no_role' ? 'btn-primary' : ''}`}
+                                                                onClick={() => handleQuickAddPlatformUser(u, 'no_role')}
+                                                                disabled={saving}
+                                                            >
+                                                                {currentProjRole === 'no_role' ? 'no_role [Active]' : '+ no_role'}
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 ) : (
                     <div className="concord-arch-pill" style={{ marginBottom: '1rem' }}>
                         Your effective role in this project is <strong>{room.project_role || 'no_role'}</strong>. Only an <strong>admin</strong> can invite members or change project roles.
@@ -182,7 +371,7 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
                 )}
 
                 <div className="concord-people-section">
-                    <div className="concord-label">PROJECT MEMBERS & ASSIGNED ROLES ({(room.invites?.length ?? 0) + 1})</div>
+                    <div className="concord-label">PROJECT MEMBERS & MCP CONNECTION STATUS ({invites.length + 1} TOTAL MEMBERS)</div>
                     <div className="concord-people-list">
                         <div className="concord-person-row">
                             <div className="concord-person-avatar owner">AD</div>
@@ -193,16 +382,24 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
                             <span className="concord-role-pill owner">admin</span>
                         </div>
 
-                        {(room.invites || []).map((inv) => {
+                        {invites.map((inv) => {
                             const personalUrl = `${window.location.origin}/?invite=${inv.invite_token}`;
                             const effectiveRole = inv.role === 'editor' ? 'team_member' : inv.role === 'viewer' ? 'no_role' : inv.role;
+                            const hasMcp = participants.some(
+                                (p) => String(p.account_email || '').toLowerCase() === String(inv.email || '').toLowerCase()
+                            );
                             return (
                                 <div key={inv.id} className="concord-person-row">
-                                    <div className="concord-person-avatar">{inv.email.slice(0, 2).toUpperCase()}</div>
+                                    <div className="concord-person-avatar">{(inv.name || inv.email).slice(0, 2).toUpperCase()}</div>
                                     <div className="concord-person-info">
-                                        <div className="concord-person-name">{inv.email}</div>
+                                        <div className="concord-person-name">
+                                            {inv.name || inv.email} <span style={{ color: 'var(--muted)', fontWeight: 400 }}>({inv.email})</span>
+                                        </div>
                                         <div className="concord-person-email">
-                                            {inv.accepted_at ? 'Joined project' : 'Invited'} - Role: {effectiveRole} ({effectiveRole === 'team_member' ? 'Can view & edit Group Chat' : 'View only Group Chat'})
+                                            Role: <strong>{effectiveRole}</strong> // MCP Status:{' '}
+                                            <strong style={{ color: hasMcp ? 'var(--emerald)' : 'var(--amber)' }}>
+                                                {hasMcp ? 'MCP CONNECTED (CAN PROMPT)' : 'MCP NOT CONNECTED YET'}
+                                            </strong>
                                         </div>
                                     </div>
                                     <div className="concord-person-actions">
@@ -282,3 +479,4 @@ export default function ShareRoomModal({ open, room, onClose, onUpdated }) {
         </div>
     );
 }
+

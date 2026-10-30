@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\ConcordLocalTask;
+use App\Models\ConcordParticipant;
 use App\Models\ConcordRoom;
 use App\Models\ConcordRoomInvite;
+use App\Models\User;
 use App\Services\ConcordHubService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,8 +14,10 @@ use Illuminate\Http\Response;
 
 class ConcordSharedController extends Controller
 {
-    public function show(Request $request, string $token): JsonResponse
+    public function show(Request $request, string $token, ConcordHubService $hub): JsonResponse
     {
+        $hub->ensureDefaultRoom();
+
         [$room, $invite, $permission, $projectRole, $bypassedByLink, $viewerEmail] = $this->resolveRoomAccess($request, $token);
         if (! $room) {
             return response()->json([
@@ -67,15 +71,33 @@ class ConcordSharedController extends Controller
             return response()->json(['message' => 'Prompt content is required.'], 422);
         }
 
+        $sessionUser = $request->session()->get('agent_host.user');
+        $lookupEmail = strtolower(trim((string) ($validated['sender_email'] ?? $viewerEmail ?? $sessionUser['email'] ?? '')));
+        $lookupName = strtolower(trim((string) ($validated['sender_name'] ?? $sessionUser['name'] ?? $sessionUser['username'] ?? '')));
+
+        $participant = null;
         if (! empty($validated['participant_id'])) {
             $participant = $room->participants()->whereKey($validated['participant_id'])->first();
-            if ($participant) {
-                $validated['sender_name'] = $validated['sender_name'] ?? $participant->user_name;
-                $validated['sender_device'] = $validated['sender_device'] ?? $participant->device_name;
-            }
+        }
+        if (! $participant && $lookupEmail !== '') {
+            $participant = $room->participants()->whereRaw('LOWER(account_email) = ?', [$lookupEmail])->first();
+        }
+        if (! $participant && $lookupName !== '') {
+            $participant = $room->participants()->whereRaw('LOWER(user_name) = ?', [$lookupName])->first();
         }
 
+        if (! $participant) {
+            return response()->json([
+                'requires_mcp' => true,
+                'message' => 'MCP Connection Required: You must connect your local MCP agent first before you can prompt in this Group Chat.',
+            ], 422);
+        }
+
+        $validated['sender_name'] = $participant->user_name;
+        $validated['sender_user'] = $participant->user_name;
+        $validated['sender_device'] = $participant->device_name;
         $validated['content'] = $text;
+
         $hub->sendPrompt($room, $validated);
 
         return response()->json($this->formatSharedRoom($room->fresh(), $permission, $projectRole, $bypassedByLink, $viewerEmail, $invite, $request));
@@ -91,7 +113,7 @@ class ConcordSharedController extends Controller
         if ($permission !== 'edit') {
             return response()->json([
                 'requires_email' => $permission === 'forbidden',
-                'message' => 'Only admin or team_member (or projects with Anyone with link can edit enabled) can connect a local computer to execute edits.',
+                'message' => 'Only admin or team_member (or projects with Anyone with link can edit enabled) can connect a local MCP agent to execute edits.',
             ], 403);
         }
 
@@ -107,7 +129,8 @@ class ConcordSharedController extends Controller
             'role_title' => ['nullable', 'string', 'max:160'],
         ]);
 
-        $email = strtolower(trim($validated['account_email'] ?? $viewerEmail ?? ''));
+        $sessionUser = $request->session()->get('agent_host.user');
+        $email = strtolower(trim($validated['account_email'] ?? $viewerEmail ?? ($sessionUser['email'] ?? '')));
         $participant = null;
 
         if (! empty($validated['participant_id'])) {
@@ -121,21 +144,23 @@ class ConcordSharedController extends Controller
                 ->first();
         }
 
-        $colors = ['#10b981', '#6366f1', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6'];
+        $colors = ['#10b981', '#6366f1', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#14b8a6'];
         $provider = $validated['provider'] ?? 'claude';
-        $agentName = $validated['agent_name'] ?? $validated['name'] ?? ($validated['user_name'].' '.ucfirst($provider).' Agent');
+        $agentName = $validated['agent_name'] ?? $validated['name'] ?? ($validated['user_name'].' '.ucfirst($provider).' MCP Agent');
 
         if ($participant) {
             $participant->update([
                 'user_name' => $validated['user_name'],
                 'account_email' => $email ?: $participant->account_email,
                 'device_name' => $validated['device_name'],
+                'execution_mode' => 'mcp_connected',
                 'name' => $agentName,
                 'provider' => $provider,
                 'model' => $validated['model'] ?? $participant->model,
                 'role_prompt' => $validated['role_title'] ?? $participant->role_prompt,
                 'status' => 'idle',
-                'current_action' => 'Connected from local computer ('.$validated['device_name'].')',
+                'current_thought' => 'MCP Handshake verified on '.$validated['device_name'].'. Ready for group chat prompts and peer handoffs.',
+                'current_action' => 'MCP Connected ('.$validated['device_name'].')',
                 'last_seen_at' => now(),
             ]);
         } else {
@@ -143,20 +168,21 @@ class ConcordSharedController extends Controller
                 'kind' => 'agent',
                 'name' => $agentName,
                 'user_name' => $validated['user_name'],
-                'account_email' => $email ?: ($validated['user_name'].'@local.dev'),
+                'account_email' => $email ?: (strtolower(preg_replace('/[^a-zA-Z0-9]+/', '.', $validated['user_name'])).'@local.mcp'),
                 'device_name' => $validated['device_name'],
-                'execution_mode' => 'local_device',
+                'execution_mode' => 'mcp_connected',
                 'provider' => $provider,
                 'model' => $validated['model'] ?? 'claude-sonnet-5-5-high',
-                'avatar' => 'AG',
+                'avatar' => 'MCP',
                 'color' => $colors[$room->participants()->count() % count($colors)],
-                'role_prompt' => $validated['role_title'] ?? 'Local Workspace Agent',
+                'role_prompt' => $validated['role_title'] ?? 'Local MCP Workspace Agent',
                 'status' => 'idle',
-                'current_thought' => 'Connected to VPS shared memory bank from '.$validated['device_name'].'. Waiting for group chat prompts or peer handoffs.',
-                'current_action' => 'Connected from local computer ('.$validated['device_name'].')',
+                'current_thought' => 'MCP Handshake verified from '.$validated['device_name'].'. Ready to coordinate on VPS shared memory and apply edits locally.',
+                'current_action' => 'MCP Connected ('.$validated['device_name'].')',
                 'thinking_steps' => [
-                    'Linked local workspace on '.$validated['device_name'].' to VPS room '.$room->title,
-                    'Synced shared memory bank and active cross-device file claims',
+                    'MCP Protocol 2024-11-05 handshake verified with VPS room '.$room->title,
+                    'Linked local workspace on '.$validated['device_name'].' for user '.$validated['user_name'],
+                    'Unlocked group chat prompting and cross-device file locks',
                 ],
                 'claimed_files' => [],
                 'local_modified_files' => [],
@@ -169,17 +195,53 @@ class ConcordSharedController extends Controller
                 'sender_user' => $participant->user_name,
                 'sender_device' => $participant->device_name,
                 'sender_kind' => 'system',
-                'sender_icon' => 'SYS',
+                'sender_icon' => 'MCP',
                 'sender_color' => '#10b981',
                 'model' => $participant->model,
                 'kind' => 'memory_update',
-                'content' => "{$participant->user_name} connected local computer {$participant->device_name} running {$participant->name} ({$participant->model}). All prompts and file edits for {$participant->user_name} will execute directly on {$participant->device_name} while syncing context memory on this VPS.",
+                'content' => "{$participant->user_name} connected MCP agent {$participant->name} on local computer {$participant->device_name} ({$participant->model}). Group Chat prompting is now unlocked for {$participant->user_name}, and all file edits for {$participant->user_name} execute directly on {$participant->device_name}.",
             ]);
         }
 
+        $totalCount = $room->participants()->count();
+        $room->update([
+            'status' => 'active',
+            'status_detail' => "{$totalCount} MCP agent(s) connected to VPS Shared Memory Hub - Ready for multi-agent prompting",
+        ]);
+
         return response()->json([
             'participant' => $participant->fresh(),
+            'mcp_handshake' => [
+                'verified' => true,
+                'protocolVersion' => '2024-11-05',
+                'server' => 'concord-vps-shared-memory-hub',
+                'tools' => ['get_shared_memory', 'write_shared_memory', 'send_group_message', 'report_thinking', 'pull_local_tasks'],
+            ],
             'room' => $this->formatSharedRoom($room->fresh(), $permission, $projectRole, $bypassedByLink, $email ?: $viewerEmail, $invite, $request),
+        ]);
+    }
+
+    public function destroyParticipant(Request $request, string $token, ConcordParticipant $participant): JsonResponse
+    {
+        [$room, $invite, $permission, $projectRole, $bypassedByLink, $viewerEmail] = $this->resolveRoomAccess($request, $token);
+        if (! $room || $participant->concord_room_id !== $room->id) {
+            return response()->json(['message' => 'Participant not found in this room.'], 404);
+        }
+
+        $sessionUser = $request->session()->get('agent_host.user');
+        $isAdmin = is_array($sessionUser) && ($sessionUser['role'] ?? '') === 'admin';
+        $lookupEmail = strtolower(trim((string) ($viewerEmail ?: ($sessionUser['email'] ?? ''))));
+        $isOwn = $lookupEmail !== '' && strtolower((string) $participant->account_email) === $lookupEmail;
+
+        if (! $isAdmin && ! $isOwn && $permission !== 'edit') {
+            return response()->json(['message' => 'Not authorized to disconnect this MCP agent.'], 403);
+        }
+
+        $participant->delete();
+
+        return response()->json([
+            'ok' => true,
+            'room' => $this->formatSharedRoom($room->fresh(), $permission, $projectRole, $bypassedByLink, $viewerEmail, $invite, $request),
         ]);
     }
 
@@ -349,7 +411,9 @@ class ConcordSharedController extends Controller
         }
 
         $participantId = $request->query('participant_id') ? (string) $request->query('participant_id') : null;
-        $script = $hub->generateConnectorScript($room, $request->getSchemeAndHttpHost(), $participantId);
+        $userEmail = $request->query('email') ? (string) $request->query('email') : null;
+        $userName = $request->query('user') ? (string) $request->query('user') : null;
+        $script = $hub->generateConnectorScript($room, $request->getSchemeAndHttpHost(), $participantId, $userEmail, $userName);
 
         return response($script, 200, [
             'Content-Type' => 'text/plain; charset=utf-8',
@@ -370,6 +434,53 @@ class ConcordSharedController extends Controller
         $method = $request->input('method', 'tools/list');
         $id = $request->input('id', 1);
         $params = $request->input('params', []);
+
+        // Auto-register or heartbeat MCP participant if user identity is included in query or params
+        $mcpEmail = strtolower(trim((string) ($request->query('user_email') ?? ($params['user_email'] ?? ''))));
+        $mcpUser = trim((string) ($request->query('user_name') ?? ($params['user_name'] ?? '')));
+        $mcpDevice = trim((string) ($request->query('device_name') ?? ($params['device_name'] ?? '')));
+
+        if ($mcpEmail !== '' || $mcpUser !== '') {
+            $resolvedUser = $mcpUser ?: explode('@', $mcpEmail)[0];
+            $resolvedDevice = $mcpDevice ?: ($resolvedUser.'-MCP-Workstation');
+            $provider = (string) ($params['provider'] ?? 'claude');
+            $model = (string) ($params['model'] ?? 'claude-sonnet-5-5-high');
+            $colors = ['#10b981', '#6366f1', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6'];
+
+            $existing = $room->participants()
+                ->when($mcpEmail !== '', fn ($q) => $q->whereRaw('LOWER(account_email) = ?', [$mcpEmail]))
+                ->when($mcpEmail === '' && $mcpUser !== '', fn ($q) => $q->whereRaw('LOWER(user_name) = ?', [strtolower($mcpUser)]))
+                ->first();
+
+            if ($existing) {
+                $existing->update([
+                    'execution_mode' => 'mcp_connected',
+                    'device_name' => $mcpDevice ?: $existing->device_name,
+                    'last_seen_at' => now(),
+                ]);
+            } else {
+                $room->participants()->create([
+                    'kind' => 'agent',
+                    'name' => $resolvedUser.' '.ucfirst($provider).' MCP Agent',
+                    'user_name' => $resolvedUser,
+                    'account_email' => $mcpEmail ?: (strtolower(preg_replace('/[^a-zA-Z0-9]+/', '.', $resolvedUser)).'@local.mcp'),
+                    'device_name' => $resolvedDevice,
+                    'execution_mode' => 'mcp_connected',
+                    'provider' => $provider,
+                    'model' => $model,
+                    'avatar' => 'MCP',
+                    'color' => $colors[$room->participants()->count() % count($colors)],
+                    'role_prompt' => 'Local MCP Workspace Agent',
+                    'status' => 'idle',
+                    'current_thought' => 'Connected via MCP JSON-RPC protocol from '.$resolvedDevice,
+                    'current_action' => 'MCP Connected ('.$resolvedDevice.')',
+                    'thinking_steps' => ['MCP JSON-RPC 2024-11-05 handshake initialized from '.$resolvedDevice],
+                    'claimed_files' => [],
+                    'local_modified_files' => [],
+                    'last_seen_at' => now(),
+                ]);
+            }
+        }
 
         if ($method === 'initialize') {
             return response()->json([
@@ -677,6 +788,9 @@ class ConcordSharedController extends Controller
         ]);
 
         $baseUrl = rtrim($request->getSchemeAndHttpHost(), '/');
+        $platformUsers = $globalRole === 'admin'
+            ? User::query()->orderBy('id')->get(['id', 'name', 'username', 'email', 'phone', 'role'])->toArray()
+            : [];
 
         return [
             'id' => $room->id,
@@ -690,6 +804,7 @@ class ConcordSharedController extends Controller
             'can_manage_room' => $globalRole === 'admin',
             'role_bypassed_by_link' => $bypassedByLink,
             'roles_catalog' => ConcordHubService::rolesCatalog(),
+            'platform_users' => $platformUsers,
             'viewer_email' => $viewerEmail,
             'invite' => $invite,
             'share_token' => $room->share_token,

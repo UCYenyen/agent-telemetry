@@ -78,25 +78,31 @@ class ConcordHubService
 
     public function ensureDefaultRoom(): ConcordRoom
     {
+        // Purge any legacy default 2 mock agents that were seeded automatically in earlier versions
+        ConcordParticipant::query()
+            ->whereIn('device_name', ['User-1-Workstation', 'User-2-Laptop', 'User-1-Computer', 'User-2-Computer'])
+            ->whereIn('name', ['Claude Code - User 1', 'Antigravity Gemini - User 2', 'Antigravity - User 2'])
+            ->delete();
+
         $existing = ConcordRoom::oldest('created_at')->first();
 
         if ($existing) {
             return $existing;
         }
 
-        $room = ConcordRoom::create([
+        return ConcordRoom::create([
             'title' => 'Concord Multi-Agent Shared Workspace',
-            'description' => 'Central VPS Context Memory & Multi-Agent Group Chat. Prompts & file edits execute on each user\'s own computer while all context memory and agent-to-agent talks live here. VPS host execution is strictly disabled for Group Chat.',
+            'description' => 'Central VPS Context Memory & Multi-Agent Group Chat. Each user must connect their local MCP first before prompting. All file edits execute on each user\'s own computer.',
             'owner_email' => 'bryankunhahaha@gmail.com',
             'access_mode' => 'invite_only',
             'status' => 'active',
-            'status_detail' => 'Shared Memory synchronized - VPS Host Sandbox Active (Local PC Execution Only)',
+            'status_detail' => 'Room initialized - 0 MCP agents connected. Connect your local MCP first to unlock prompting.',
             'shared_memory' => [
                 [
                     'id' => 'mem_arch_1',
                     'key' => 'execution_topology',
                     'category' => 'architecture',
-                    'content' => 'VPS holds ONLY shared context memory, session state, and agent-to-agent group chat. Group Chat agents have zero access to the VPS filesystem or shell. All file edits execute on each user\'s local computer.',
+                    'content' => 'VPS holds ONLY shared context memory, session state, and agent-to-agent group chat. Each user connects their local MCP first to unlock prompting, and all file edits execute on each user\'s local computer.',
                     'author_agent' => 'Concord Security Sandbox',
                     'author_user' => 'System',
                     'updated_at' => now()->toIso8601String(),
@@ -104,117 +110,29 @@ class ConcordHubService
             ],
             'active_claims' => [],
         ]);
-
-        $room->participants()->createMany([
-            [
-                'kind' => 'agent',
-                'name' => 'Claude Code - User 1',
-                'user_name' => 'User 1 (Owner)',
-                'account_email' => 'bryankunhahaha@gmail.com',
-                'device_name' => 'User-1-Workstation',
-                'execution_mode' => 'local_device',
-                'provider' => 'claude',
-                'model' => 'claude-sonnet-5-5-high',
-                'avatar' => 'A1',
-                'color' => '#ff5722',
-                'role_prompt' => 'Primary architecture & backend agent for User 1. Edits files only on User 1\'s local computer and coordinates API contracts with peer agents.',
-                'status' => 'idle',
-                'current_thought' => 'Connected to VPS Shared Memory - waiting for User 1 prompt or peer message',
-                'current_action' => 'Idle on User-1-Workstation',
-                'thinking_steps' => ['Synchronized with VPS shared context window', 'Ready to edit files locally on User-1-Workstation'],
-                'claimed_files' => [],
-                'local_modified_files' => [],
-                'last_seen_at' => now(),
-            ],
-            [
-                'kind' => 'agent',
-                'name' => 'Antigravity Gemini - User 2',
-                'user_name' => 'User 2 (Collaborator)',
-                'account_email' => 'collaborator@team.dev',
-                'device_name' => 'User-2-Laptop',
-                'execution_mode' => 'local_device',
-                'provider' => 'antigravity',
-                'model' => 'gemini-3.8-flash-high',
-                'avatar' => 'A2',
-                'color' => '#00d2ff',
-                'role_prompt' => 'Partner agent for User 2. Communicates with peer agents over the VPS shared context window and applies corresponding code changes directly on User 2\'s computer.',
-                'status' => 'idle',
-                'current_thought' => 'Listening to Concord group chat for handoffs from peer agents',
-                'current_action' => 'Idle on User-2-Laptop',
-                'thinking_steps' => ['Listening on Concord MCP channel', 'Ready to apply synced changes on User-2-Laptop'],
-                'claimed_files' => [],
-                'local_modified_files' => [],
-                'last_seen_at' => now(),
-            ],
-        ]);
-
-        return $room;
     }
 
     public function createRoom(array $data): ConcordRoom
     {
         $room = ConcordRoom::create([
             'title' => $data['title'],
-            'description' => $data['description'] ?? 'Cross-account multi-agent group chat with centralized VPS context memory and local device execution.',
+            'description' => $data['description'] ?? 'Multi-user group chat with centralized VPS context memory and local MCP execution. Unlimited users & agents supported.',
             'owner_email' => $data['owner_email'] ?? 'bryankunhahaha@gmail.com',
             'access_mode' => $data['access_mode'] ?? 'invite_only',
             'status' => 'active',
-            'status_detail' => 'Room initialized - connect local agents via 1-click link or MCP',
+            'status_detail' => 'Room initialized - 0 MCP agents connected. Connect your local MCP first to unlock prompting.',
             'shared_memory' => [
                 [
                     'id' => 'mem_init',
                     'key' => 'workspace_goal',
                     'category' => 'decision',
-                    'content' => $data['description'] ?? "Collaborative workspace for {$data['title']}",
+                    'content' => $data['description'] ?? "Collaborative workspace for {$data['title']} - connect your local MCP agent to begin.",
                     'author_agent' => 'Concord Hub',
                     'author_user' => $data['owner_email'] ?? 'Owner',
                     'updated_at' => now()->toIso8601String(),
                 ],
             ],
             'active_claims' => [],
-        ]);
-
-        $room->participants()->createMany([
-            [
-                'kind' => 'agent',
-                'name' => 'Claude Code - User 1',
-                'user_name' => 'User 1',
-                'account_email' => $data['owner_email'] ?? 'bryankunhahaha@gmail.com',
-                'device_name' => 'User-1-Computer',
-                'execution_mode' => 'local_device',
-                'provider' => 'claude',
-                'model' => 'claude-sonnet-5-5-high',
-                'avatar' => 'A1',
-                'color' => '#ff5722',
-                'role_prompt' => 'Agent 1 operating on User 1\'s local computer.',
-                'status' => 'idle',
-                'current_thought' => 'Waiting for prompt in group chat',
-                'current_action' => 'Idle on User-1-Computer',
-                'thinking_steps' => ['Registered in shared memory'],
-                'claimed_files' => [],
-                'local_modified_files' => [],
-                'last_seen_at' => now(),
-            ],
-            [
-                'kind' => 'agent',
-                'name' => 'Antigravity - User 2',
-                'user_name' => 'User 2',
-                'account_email' => 'user2@team.dev',
-                'device_name' => 'User-2-Computer',
-                'execution_mode' => 'local_device',
-                'provider' => 'antigravity',
-                'model' => 'gemini-3.8-flash-high',
-                'avatar' => 'A2',
-                'color' => '#00d2ff',
-                'role_prompt' => 'Agent 2 operating on User 2\'s local computer.',
-                'status' => 'idle',
-                'current_thought' => 'Waiting for peer agent communication',
-                'current_action' => 'Idle on User-2-Computer',
-                'thinking_steps' => ['Registered in shared memory'],
-                'claimed_files' => [],
-                'local_modified_files' => [],
-                'last_seen_at' => now(),
-            ],
         ]);
 
         return $room->load(['participants', 'invites', 'messages', 'localTasks']);
@@ -684,16 +602,23 @@ class ConcordHubService
         return [$thought, $localFiles, $memoryNote, $cleanBody];
     }
 
-    public function generateConnectorScript(ConcordRoom $room, string $baseUrl, ?string $participantId = null): string
-    {
+    public function generateConnectorScript(
+        ConcordRoom $room,
+        string $baseUrl,
+        ?string $participantId = null,
+        ?string $userEmail = null,
+        ?string $userName = null
+    ): string {
         $shareToken = $room->share_token;
         $mcpToken = $room->mcp_token;
         $roomTitle = addslashes($room->title);
+        $defaultEmail = addslashes((string) ($userEmail ?? ''));
+        $defaultUser = addslashes((string) ($userName ?? ''));
 
         return <<<BASH
 #!/usr/bin/env bash
 # ==============================================================================
-# CONCORD LOCAL DEVICE CONNECTOR - {$roomTitle}
+# CONCORD LOCAL MCP & DEVICE CONNECTOR - {$roomTitle}
 # Central Shared Memory & Group Chat: {$baseUrl}
 # File Edits & Agent Execution: THIS LOCAL COMPUTER (NEVER ON THE VPS)
 # ==============================================================================
@@ -703,11 +628,14 @@ HUB_URL="{$baseUrl}"
 SHARE_TOKEN="{$shareToken}"
 MCP_TOKEN="{$mcpToken}"
 PARTICIPANT_ID="{$participantId}"
-USER_NAME="\${CONCORD_USER:-\$(whoami)}"
+USER_NAME="\${CONCORD_USER:-{$defaultUser}}"
+if [ -z "\${USER_NAME}" ]; then USER_NAME="\$(whoami)"; fi
+USER_EMAIL="\${CONCORD_EMAIL:-{$defaultEmail}}"
 DEVICE_NAME="\${CONCORD_DEVICE:-\$(hostname)}"
 AGENT_CLI="\${CONCORD_AGENT:-claude}"
+MODEL_ID="\${CONCORD_MODEL:-claude-sonnet-5-5-high}"
 
-echo "[CONNECT] Connecting local computer [\${DEVICE_NAME}] (User: \${USER_NAME}) to Concord Room: {$roomTitle}..."
+echo "[MCP] Connecting local computer [\${DEVICE_NAME}] (User: \${USER_NAME} <\${USER_EMAIL}>) to Concord Room: {$roomTitle}..."
 
 # 1. Configure Remote Concord MCP in current repository so local Claude Code / Antigravity / Cursor share VPS memory
 mkdir -p .agents .cursor
@@ -716,7 +644,7 @@ cat > .mcp.json <<EOF
   "mcpServers": {
     "concord-shared-memory": {
       "type": "http",
-      "url": "\${HUB_URL}/api/concord/mcp/\${MCP_TOKEN}"
+      "url": "\${HUB_URL}/api/concord/mcp/\${MCP_TOKEN}?user_email=\${USER_EMAIL}&user_name=\${USER_NAME}&device_name=\${DEVICE_NAME}"
     }
   }
 }
@@ -724,16 +652,21 @@ EOF
 cp .mcp.json .agents/mcp_config.json 2>/dev/null || true
 cp .mcp.json .cursor/mcp.json 2>/dev/null || true
 
-# 2. Register or heartbeat this local computer in the VPS Group Chat room
+# 2. Perform MCP JSON-RPC Handshake & Register this local computer in the VPS Group Chat room
+curl -s -X POST "\${HUB_URL}/api/concord/mcp/\${MCP_TOKEN}" \\
+  -H "Content-Type: application/json" \\
+  -d "{\\"jsonrpc\\":\\"2.0\\",\\"id\\":1,\\"method\\":\\"initialize\\",\\"params\\":{\\"user_email\\":\\"\${USER_EMAIL}\\",\\"user_name\\":\\"\${USER_NAME}\\",\\"device_name\\":\\"\${DEVICE_NAME}\\",\\"provider\\":\\"\${AGENT_CLI}\\",\\"model\\":\\"\${MODEL_ID}\\"}}" >/dev/null || true
+
 REG_JSON=\$(curl -s -X POST "\${HUB_URL}/api/concord/shared/\${SHARE_TOKEN}/register-device" \\
   -H "Content-Type: application/json" \\
-  -d "{\\"participant_id\\":\\"\${PARTICIPANT_ID}\\",\\"user_name\\":\\"\${USER_NAME}\\",\\"device_name\\":\\"\${DEVICE_NAME}\\",\\"provider\\":\\"\${AGENT_CLI}\\"}")
+  -d "{\\"participant_id\\":\\"\${PARTICIPANT_ID}\\",\\"user_name\\":\\"\${USER_NAME}\\",\\"account_email\\":\\"\${USER_EMAIL}\\",\\"device_name\\":\\"\${DEVICE_NAME}\\",\\"provider\\":\\"\${AGENT_CLI}\\",\\"model\\":\\"\${MODEL_ID}\\"}")
 
 if [ -z "\${PARTICIPANT_ID}" ]; then
   PARTICIPANT_ID=\$(printf '%s' "\${REG_JSON}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('participant',{}).get('id',''))" 2>/dev/null || true)
 fi
 
-echo "[OK] Registered on VPS Shared Memory Hub! Participant ID: \${PARTICIPANT_ID}"
+echo "[OK] MCP Connected & Verified on VPS Shared Memory Hub! Participant ID: \${PARTICIPANT_ID}"
+echo "[UNLOCKED] Group Chat prompting is now unlocked for \${USER_NAME} (\${DEVICE_NAME})."
 echo "[DIR] Local working directory: \$(pwd)"
 echo "[LISTEN] Listening for group chat prompts & peer agent handoffs to execute locally on THIS computer..."
 

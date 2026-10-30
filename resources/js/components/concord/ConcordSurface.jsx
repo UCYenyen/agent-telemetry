@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { api } from '../../lib/api';
 import { useInterval } from '../../hooks/useInterval';
@@ -10,7 +10,8 @@ import ConnectDeviceModal from './ConnectDeviceModal';
 export default function ConcordSurface({ initialFullscreen = false }) {
     const { state, reload, toast, sharedToken } = useApp();
     const rooms = state?.concord?.rooms || [];
-    const isAdmin = Boolean(state?.user?.role === 'admin' || state?.user?.is_admin);
+    const currentUser = state?.user || null;
+    const isAdmin = Boolean(currentUser?.role === 'admin' || currentUser?.is_admin);
 
     const [selectedRoomId, setSelectedRoomId] = useState(null);
     const [roomDetail, setRoomDetail] = useState(null);
@@ -20,6 +21,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
     const [sending, setSending] = useState(false);
     const [newRoomTitle, setNewRoomTitle] = useState('');
     const [creatingRoom, setCreatingRoom] = useState(false);
+    const [localParticipantId, setLocalParticipantId] = useState('');
 
     const [requiresEmailGate, setRequiresEmailGate] = useState(false);
     const [gateInfo, setGateInfo] = useState(null);
@@ -37,6 +39,16 @@ export default function ConcordSurface({ initialFullscreen = false }) {
             setSelectedRoomId(rooms[0].id);
         }
     }, [rooms, selectedRoomId]);
+
+    useEffect(() => {
+        if (!roomDetail?.id) return;
+        try {
+            const saved = localStorage.getItem(`concord_mcp_participant_${roomDetail.id}`) || '';
+            setLocalParticipantId(saved);
+        } catch {
+            setLocalParticipantId('');
+        }
+    }, [roomDetail?.id]);
 
     const fetchRoom = useCallback(async () => {
         try {
@@ -67,21 +79,69 @@ export default function ConcordSurface({ initialFullscreen = false }) {
 
     useInterval(fetchRoom, 2500);
 
+    const myParticipants = useMemo(() => {
+        const list = roomDetail?.participants || [];
+        if (list.length === 0) return [];
+
+        const userEmail = String(currentUser?.email || visitorEmail || roomDetail?.viewer_email || '').trim().toLowerCase();
+        const userName = String(currentUser?.name || currentUser?.username || '').trim().toLowerCase();
+
+        return list.filter((p) => {
+            if (localParticipantId && String(p.id) === String(localParticipantId)) return true;
+            const pEmail = String(p.account_email || '').trim().toLowerCase();
+            const pName = String(p.user_name || '').trim().toLowerCase();
+            if (userEmail && pEmail && pEmail === userEmail) return true;
+            if (userName && pName && pName === userName) return true;
+            return false;
+        });
+    }, [roomDetail?.participants, roomDetail?.viewer_email, currentUser, visitorEmail, localParticipantId]);
+
+    const hasConnectedMcp = myParticipants.length > 0;
+
     const handleSendPrompt = async (payload) => {
         if (!roomDetail) return;
+        if (!hasConnectedMcp) {
+            toast('Connect your local MCP agent first before prompting in the Group Chat.');
+            setConnectModalOpen(true);
+            return;
+        }
         setSending(true);
         try {
             const token = sharedToken || roomDetail.share_token;
             const updated = await api.post(`/api/concord/shared/${token}/messages`, {
                 ...payload,
-                sender_email: payload.sender_email || visitorEmail || state?.user?.email || undefined,
+                sender_email: payload.sender_email || visitorEmail || currentUser?.email || undefined,
             });
             setRoomDetail(updated);
             toast('Prompt synced to VPS Shared Memory & local computer queues.');
         } catch (err) {
+            if (err.data?.requires_mcp) {
+                setConnectModalOpen(true);
+            }
             toast(err.message);
         } finally {
             setSending(false);
+        }
+    };
+
+    const handleDisconnectParticipant = async (participant) => {
+        if (!roomDetail || !participant) return;
+        try {
+            const token = sharedToken || roomDetail.share_token;
+            await api.delete(`/api/concord/shared/${token}/participants/${participant.id}`);
+            if (String(localParticipantId) === String(participant.id)) {
+                try {
+                    localStorage.removeItem(`concord_mcp_participant_${roomDetail.id}`);
+                } catch {
+                    // ignore
+                }
+                setLocalParticipantId('');
+            }
+            toast(`Disconnected MCP agent ${participant.name} (${participant.device_name})`);
+            fetchRoom();
+            reload();
+        } catch (err) {
+            toast(err.message);
         }
     };
 
@@ -98,7 +158,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
             setSelectedRoomId(created.id);
             setRoomDetail(created);
             reload();
-            toast(`Created group chat project "${created.title}"`);
+            toast(`Created group chat project "${created.title}" (0 agents connected - connect MCP to begin)`);
         } catch (err) {
             toast(err.message);
         } finally {
@@ -153,10 +213,13 @@ export default function ConcordSurface({ initialFullscreen = false }) {
     const canEdit = roomDetail ? roomDetail.permission === 'edit' : isAdmin;
     const projectRole = roomDetail?.project_role || (isAdmin ? 'admin' : 'no_role');
     const bypassedByLink = Boolean(roomDetail?.role_bypassed_by_link);
+    const totalParticipants = roomDetail?.participants?.length || 0;
+    const totalMembers = (roomDetail?.invites?.length || 0) + 1;
+
     const accessBadge = roomDetail?.access_mode === 'invite_only'
-        ? 'RESTRICTED (INVITE ONLY - CHECKS PROJECT ROLE)'
+        ? 'RESTRICTED (INVITE ONLY)'
         : roomDetail?.access_mode === 'link_view'
-            ? 'ANYONE WITH LINK CAN VIEW (CHECKS PROJECT ROLE FOR EDIT)'
+            ? 'ANYONE WITH LINK CAN VIEW'
             : 'ANYONE WITH LINK CAN EDIT (ROLE BYPASSED)';
 
     return (
@@ -167,7 +230,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                     <div className="concord-room-titles">
                         <h2 className="concord-room-title">{roomDetail?.title || 'Loading Shared Memory Hub...'}</h2>
                         <span className="concord-room-sub">
-                            MODE: {accessBadge} // YOUR PROJECT ROLE: {projectRole.toUpperCase()} {bypassedByLink ? '(BYPASSED BY EDIT LINK)' : ''}
+                            MODE: {accessBadge} // ROLE: {projectRole.toUpperCase()} {bypassedByLink ? '(BYPASSED BY EDIT LINK)' : ''} // {totalParticipants} MCP AGENT{totalParticipants === 1 ? '' : 'S'} CONNECTED
                         </span>
                     </div>
                 </div>
@@ -181,7 +244,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                         >
                             {rooms.map((r) => (
                                 <option key={r.id} value={r.id}>
-                                    {r.title} ({r.participants_count ?? 2} agents)
+                                    {r.title} ({r.participants_count ?? 0} MCP agents)
                                 </option>
                             ))}
                         </select>
@@ -192,10 +255,12 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                             {canEdit && (
                                 <button
                                     type="button"
-                                    className="btn btn-emerald"
+                                    className={`btn ${hasConnectedMcp ? 'btn-emerald' : 'btn-amber-pulse'}`}
                                     onClick={() => setConnectModalOpen(true)}
                                 >
-                                    Connect Local PC / MCP
+                                    {hasConnectedMcp
+                                        ? `MCP Connected (${myParticipants[0].device_name})`
+                                        : '1. Connect Your MCP First'}
                                 </button>
                             )}
                             <button
@@ -203,7 +268,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                                 className="btn btn-primary"
                                 onClick={() => setShareModalOpen(true)}
                             >
-                                {isAdmin ? 'Share & Manage Roles' : 'Roles & Share Info'}
+                                {isAdmin ? `Add / Manage Users (${totalMembers})` : `Team & Roles (${totalMembers})`}
                             </button>
                             <button
                                 type="button"
@@ -213,7 +278,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                                     'Copied group chat share link!'
                                 )}
                             >
-                                Copy Link
+                                Copy Share Link
                             </button>
                         </>
                     )}
@@ -228,12 +293,69 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                 </div>
             </header>
 
+            {/* 4-Step Live Readiness & Topology Pipeline Bar */}
+            {roomDetail && (
+                <div className="concord-pipeline-bar">
+                    <div className="concord-pipeline-step ready">
+                        <span className="concord-step-num">01</span>
+                        <div className="concord-step-body">
+                            <span className="concord-step-kicker">PROJECT ROLE & ACCESS</span>
+                            <strong className="concord-step-val">
+                                {projectRole.toUpperCase()} {canEdit ? '[CAN EDIT]' : '[VIEW ONLY]'}
+                            </strong>
+                        </div>
+                    </div>
+
+                    <div className="concord-pipeline-step ready" onClick={() => setShareModalOpen(true)} style={{ cursor: 'pointer' }}>
+                        <span className="concord-step-num">02</span>
+                        <div className="concord-step-body">
+                            <span className="concord-step-kicker">UNLIMITED USERS ROSTER</span>
+                            <strong className="concord-step-val">
+                                {totalMembers} User{totalMembers === 1 ? '' : 's'} ({isAdmin ? '+ Click to Add More' : 'View Team'})
+                            </strong>
+                        </div>
+                    </div>
+
+                    <div
+                        className={`concord-pipeline-step ${hasConnectedMcp ? 'ready' : 'locked'}`}
+                        onClick={() => canEdit && setConnectModalOpen(true)}
+                        style={{ cursor: canEdit ? 'pointer' : 'default' }}
+                    >
+                        <span className="concord-step-num">03</span>
+                        <div className="concord-step-body">
+                            <span className="concord-step-kicker">YOUR MCP GATEWAY</span>
+                            <strong className="concord-step-val">
+                                {hasConnectedMcp
+                                    ? `CONNECTED // ${myParticipants[0].device_name}`
+                                    : canEdit
+                                      ? 'NOT CONNECTED (CLICK TO CONNECT MCP)'
+                                      : 'READ-ONLY VIEWER'}
+                            </strong>
+                        </div>
+                    </div>
+
+                    <div className={`concord-pipeline-step ${totalParticipants > 0 && hasConnectedMcp ? 'ready' : 'locked'}`}>
+                        <span className="concord-step-num">04</span>
+                        <div className="concord-step-body">
+                            <span className="concord-step-kicker">GROUP PROMPTING STATUS</span>
+                            <strong className="concord-step-val">
+                                {!canEdit
+                                    ? 'LOCKED (NO_ROLE VIEW ONLY)'
+                                    : hasConnectedMcp
+                                      ? `UNLOCKED (${totalParticipants} ACTIVE AGENT${totalParticipants === 1 ? '' : 'S'})`
+                                      : 'LOCKED UNTIL MCP CONNECTED'}
+                            </strong>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {!sharedToken && !fullscreen && isAdmin && (
                 <form className="concord-new-room-bar" onSubmit={handleCreateRoom}>
                     <input
                         type="text"
                         className="input"
-                        placeholder="Admin Only: Create a new multi-agent group chat project first, then invite members or share edit link..."
+                        placeholder="Admin Only: Create a new multi-agent group chat project (starts with 0 default agents)..."
                         value={newRoomTitle}
                         onChange={(e) => setNewRoomTitle(e.target.value)}
                     />
@@ -246,9 +368,14 @@ export default function ConcordSurface({ initialFullscreen = false }) {
             <div className="concord-workspace-grid">
                 <ConcordGroupChat
                     room={roomDetail}
+                    currentUser={currentUser}
+                    myParticipants={myParticipants}
+                    hasConnectedMcp={hasConnectedMcp}
                     canEdit={canEdit}
+                    isAdmin={isAdmin}
                     sending={sending}
                     onSendPrompt={handleSendPrompt}
+                    onDisconnectParticipant={handleDisconnectParticipant}
                     onOpenConnectModal={() => setConnectModalOpen(true)}
                     onOpenRolesModal={() => setShareModalOpen(true)}
                 />
@@ -265,19 +392,35 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                 open={shareModalOpen}
                 room={roomDetail}
                 onClose={() => setShareModalOpen(false)}
-                onUpdated={fetchRoom}
+                onUpdated={() => {
+                    fetchRoom();
+                    reload();
+                }}
             />
 
             <ConnectDeviceModal
                 open={connectModalOpen}
                 room={roomDetail}
+                currentUser={currentUser}
+                visitorEmail={visitorEmail}
+                myParticipants={myParticipants}
                 activeToken={sharedToken || roomDetail?.share_token}
                 onClose={() => setConnectModalOpen(false)}
-                onConnected={() => {
+                onDisconnectParticipant={handleDisconnectParticipant}
+                onConnected={(participant) => {
+                    if (participant?.id && roomDetail?.id) {
+                        try {
+                            localStorage.setItem(`concord_mcp_participant_${roomDetail.id}`, String(participant.id));
+                        } catch {
+                            // ignore
+                        }
+                        setLocalParticipantId(String(participant.id));
+                    }
                     fetchRoom();
-                    setConnectModalOpen(false);
+                    reload();
                 }}
             />
         </section>
     );
 }
+

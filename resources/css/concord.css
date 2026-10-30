@@ -852,7 +852,361 @@
     border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
+/* 4-Step Live Readiness & MCP Topology Pipeline Bar */
+.concord-pipeline-bar {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.concord-pipeline-step {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.55rem 0.95rem;
+    background: #0c0f17;
+    transition: background 0.18s ease;
+}
+
+.concord-pipeline-step:hover {
+    background: #111622;
+}
+
+.concord-step-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 0.66rem;
+    font-weight: 700;
+    background: rgba(16, 185, 129, 0.16);
+    color: var(--emerald);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    flex-shrink: 0;
+}
+
+.concord-pipeline-step.locked .concord-step-num {
+    background: rgba(245, 158, 11, 0.16);
+    color: var(--amber);
+    border-color: rgba(245, 158, 11, 0.38);
+}
+
+.concord-step-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.concord-step-kicker {
+    font-family: var(--mono);
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+}
+
+.concord-step-val {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.concord-pipeline-step.locked .concord-step-val {
+    color: #fcd34d;
+}
+
+.btn-amber-pulse {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(234, 88, 12, 0.28));
+    border-color: rgba(245, 158, 11, 0.55);
+    color: #fef3c7;
+    font-weight: 600;
+    box-shadow: 0 0 18px rgba(245, 158, 11, 0.2);
+}
+
+/* Unlimited Member Chips & Roster Controls */
+.concord-roster-head-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.concord-roster-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.concord-member-pills {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.32rem;
+}
+
+.concord-member-chip {
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    padding: 0.14rem 0.48rem;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    color: var(--muted);
+}
+
+.concord-member-chip.owner {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.35);
+    color: #c7d2fe;
+}
+
+.concord-member-chip.mcp-ready {
+    background: rgba(16, 185, 129, 0.13);
+    border-color: rgba(16, 185, 129, 0.32);
+    color: #a7f3d0;
+}
+
+.concord-member-chip.mcp-waiting {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.28);
+    color: #fde68a;
+}
+
+.concord-empty-roster-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 9px;
+    background: rgba(245, 158, 11, 0.07);
+    border: 1px dashed rgba(245, 158, 11, 0.35);
+    font-size: 0.76rem;
+    color: #fde68a;
+}
+
+.concord-participant-card.mine {
+    border-color: rgba(16, 185, 129, 0.42);
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.07), rgba(255, 255, 255, 0.02));
+}
+
+.concord-you-tag {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    padding: 0.05rem 0.3rem;
+    border-radius: 4px;
+    background: rgba(16, 185, 129, 0.22);
+    color: var(--emerald);
+    margin-left: 0.2rem;
+}
+
+.concord-p-disconnect {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--muted);
+    border-radius: 5px;
+    width: 20px;
+    height: 20px;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.concord-p-disconnect:hover {
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #fca5a5;
+}
+
+/* Onboarding Empty State Blueprint Card */
+.concord-onboarding-card {
+    margin: auto;
+    max-width: 820px;
+    width: 100%;
+    padding: 1.4rem 1.6rem;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(19, 24, 36, 0.95), rgba(12, 15, 23, 0.95));
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+}
+
+.concord-onboarding-title {
+    margin: 0.2rem 0 0.35rem;
+    font-family: 'Syne', sans-serif;
+    font-size: 1.15rem;
+    color: var(--ink);
+}
+
+.concord-onboarding-sub {
+    margin: 0 0 1rem;
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.45;
+}
+
+.concord-onboarding-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.75rem;
+}
+
+.concord-onboard-step {
+    padding: 0.85rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    display: flex;
+    flex-direction: column;
+    gap: 0.38rem;
+}
+
+.concord-onboard-step strong {
+    font-size: 0.82rem;
+    color: var(--ink);
+}
+
+.concord-onboard-step p {
+    margin: 0;
+    font-size: 0.73rem;
+    color: var(--muted);
+    line-height: 1.45;
+    flex: 1;
+}
+
+.concord-onboard-badge {
+    align-self: flex-start;
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    padding: 0.12rem 0.42rem;
+    border-radius: 4px;
+    background: rgba(99, 102, 241, 0.18);
+    color: #c7d2fe;
+}
+
+.concord-onboard-badge.emerald {
+    background: rgba(16, 185, 129, 0.18);
+    color: var(--emerald);
+}
+
+/* Mandatory MCP Connection Lock Bar (Replaces Composer Until MCP Connected) */
+.concord-mcp-lock-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.35rem;
+    background: linear-gradient(90deg, rgba(245, 158, 11, 0.12), rgba(16, 185, 129, 0.08));
+    border-top: 1px solid rgba(245, 158, 11, 0.38);
+    flex-wrap: wrap;
+}
+
+.concord-mcp-lock-info {
+    flex: 1;
+    min-width: 260px;
+}
+
+.concord-mcp-lock-badge {
+    font-family: var(--mono);
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--amber);
+    margin-bottom: 0.2rem;
+}
+
+.concord-mcp-lock-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 0.2rem;
+}
+
+.concord-mcp-lock-sub {
+    font-size: 0.76rem;
+    color: #d4d8e8;
+    line-height: 1.42;
+}
+
+.concord-mcp-lock-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.concord-mcp-verified-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 0.95rem;
+    margin-bottom: 1rem;
+    border-radius: 10px;
+    background: rgba(16, 185, 129, 0.13);
+    border: 1px solid rgba(16, 185, 129, 0.42);
+    font-size: 0.78rem;
+    color: #d1fae5;
+}
+
+/* Multi-Row Unlimited User Invite Builder & Roles Matrix */
+.concord-roles-matrix-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 0.55rem;
+}
+
+.concord-role-spec-card {
+    padding: 0.65rem 0.8rem;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.concord-role-pill {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 0.12rem 0.45rem;
+    border-radius: 5px;
+    background: rgba(99, 102, 241, 0.16);
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    color: #c7d2fe;
+}
+
+.concord-role-pill.owner {
+    background: rgba(16, 185, 129, 0.18);
+    border-color: rgba(16, 185, 129, 0.4);
+    color: var(--emerald);
+}
+
+.concord-multi-invite-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.42rem;
+}
+
+.concord-multi-invite-row {
+    display: grid;
+    grid-template-columns: 1.3fr 0.9fr 145px auto;
+    gap: 0.4rem;
+    align-items: center;
+}
+
 @media (max-width: 980px) {
+    .concord-pipeline-bar {
+        grid-template-columns: 1fr 1fr;
+    }
     .concord-workspace-grid {
         grid-template-columns: 1fr;
     }
@@ -861,4 +1215,8 @@
         border-left: none;
         border-top: 1px solid rgba(255, 255, 255, 0.08);
     }
+    .concord-multi-invite-row {
+        grid-template-columns: 1fr;
+    }
 }
+
