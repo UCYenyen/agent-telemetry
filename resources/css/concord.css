@@ -1833,3 +1833,9 @@
 .memory-item p { margin: 5px 0; font-size: 0.86rem; line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
 .memory-author { font-size: 0.76rem; color: var(--text-3); }
 .memory-subhead { margin: 4px 0 0; font-size: 0.8rem; color: var(--text-2); }
+
+.room-view .btn,
+.room-view button { font-family: var(--font-sans); letter-spacing: 0; }
+.chat-note time,
+.chat-msg-head time,
+.memory-item-head time { white-space: nowrap; flex: none; }
