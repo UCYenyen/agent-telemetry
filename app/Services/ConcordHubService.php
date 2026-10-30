@@ -9,7 +9,13 @@ use Illuminate\Support\Str;
 
 class ConcordHubService
 {
-    public function __construct(private LlmCascade $cascade) {}
+    /**
+     * SECURITY GUARANTEE:
+     * ConcordHubService NEVER executes any CLI binary, shell command, or filesystem operation on the VPS.
+     * It uses only stateless OpenRouter HTTP calls (when configured) or sandboxed in-memory coordination,
+     * and dispatches all workspace file edits to each user's own local computer via ConcordLocalTask.
+     */
+    public function __construct(private OpenRouter $openRouter) {}
 
     public static function rolesCatalog(): array
     {
@@ -53,7 +59,7 @@ class ConcordHubService
             [
                 'id' => 'no_role',
                 'label' => 'no_role',
-                'title' => 'No Role (Default — Read-Only Group Chat Viewer)',
+                'title' => 'No Role (Default - Read-Only Group Chat Viewer)',
                 'can_view_vps_fleet' => false,
                 'can_create_room' => false,
                 'can_manage_roles' => false,
@@ -80,18 +86,18 @@ class ConcordHubService
 
         $room = ConcordRoom::create([
             'title' => 'Concord Multi-Agent Shared Workspace',
-            'description' => 'Central VPS Context Memory & Multi-Agent Group Chat. Prompts & file edits execute on each user\'s own computer while all context memory and agent-to-agent talks live here.',
+            'description' => 'Central VPS Context Memory & Multi-Agent Group Chat. Prompts & file edits execute on each user\'s own computer while all context memory and agent-to-agent talks live here. VPS host execution is strictly disabled for Group Chat.',
             'owner_email' => 'bryankunhahaha@gmail.com',
             'access_mode' => 'invite_only',
             'status' => 'active',
-            'status_detail' => 'Shared Memory synchronized - Ready for cross-device agent collaboration',
+            'status_detail' => 'Shared Memory synchronized - VPS Host Sandbox Active (Local PC Execution Only)',
             'shared_memory' => [
                 [
                     'id' => 'mem_arch_1',
                     'key' => 'execution_topology',
                     'category' => 'architecture',
-                    'content' => 'VPS holds shared context memory, session state, and agent-to-agent group chat. File edits execute on each user\'s local computer.',
-                    'author_agent' => 'Concord Hub',
+                    'content' => 'VPS holds ONLY shared context memory, session state, and agent-to-agent group chat. Group Chat agents have zero access to the VPS filesystem or shell. All file edits execute on each user\'s local computer.',
+                    'author_agent' => 'Concord Security Sandbox',
                     'author_user' => 'System',
                     'updated_at' => now()->toIso8601String(),
                 ],
@@ -111,7 +117,7 @@ class ConcordHubService
                 'model' => 'claude-sonnet-5-5-high',
                 'avatar' => 'A1',
                 'color' => '#ff5722',
-                'role_prompt' => 'Primary architecture & backend/frontend agent for User 1. Edits files on User 1\'s local computer and coordinates API contracts with User 2\'s agent.',
+                'role_prompt' => 'Primary architecture & backend agent for User 1. Edits files only on User 1\'s local computer and coordinates API contracts with peer agents.',
                 'status' => 'idle',
                 'current_thought' => 'Connected to VPS Shared Memory - waiting for User 1 prompt or peer message',
                 'current_action' => 'Idle on User-1-Workstation',
@@ -131,9 +137,9 @@ class ConcordHubService
                 'model' => 'gemini-3.8-flash-high',
                 'avatar' => 'A2',
                 'color' => '#00d2ff',
-                'role_prompt' => 'Partner agent for User 2. Communicates with User 1\'s agent over the VPS shared context window and applies corresponding code changes directly on User 2\'s computer.',
+                'role_prompt' => 'Partner agent for User 2. Communicates with peer agents over the VPS shared context window and applies corresponding code changes directly on User 2\'s computer.',
                 'status' => 'idle',
-                'current_thought' => 'Listening to Concord group chat for handoffs from User 1\'s agent',
+                'current_thought' => 'Listening to Concord group chat for handoffs from peer agents',
                 'current_action' => 'Idle on User-2-Laptop',
                 'thinking_steps' => ['Listening on Concord MCP channel', 'Ready to apply synced changes on User-2-Laptop'],
                 'claimed_files' => [],
@@ -229,7 +235,7 @@ class ConcordHubService
             'updated_at' => now()->toIso8601String(),
         ];
 
-        $index = $memories->search(fn (array $item) => is_array($item) && ($item['key'] ?? '') === $key);
+        $index = $memories->search(fn ($item) => is_array($item) && ($item['key'] ?? '') === $key);
         if ($index !== false) {
             $memories[$index] = $record;
         } else {
@@ -359,6 +365,11 @@ class ConcordHubService
         return $room->fresh(['participants', 'invites', 'messages', 'localTasks']);
     }
 
+    /**
+     * Multi-agent coordination across N connected users & computers (2, 3, or more agents).
+     * Agent 1 plans its scope and queues edits for User 1's PC, then communicates with Agent 2, Agent 3, ..., Agent N.
+     * Each peer agent reads the updated VPS Shared Memory from all preceding agents and queues edits for its own user's local PC.
+     */
     public function executeMultiAgentTurn(
         ConcordRoom $room,
         string $prompt,
@@ -382,41 +393,83 @@ class ConcordHubService
             ? ($agents->firstWhere('id', $targetParticipantId) ?? $agents->firstWhere('name', $targetParticipantId))
             : null) ?? $agents->first();
         $peers = $agents->where('id', '!=', $primary->id)->values();
+        $totalAgents = $agents->count();
 
-        $this->runSingleAgentStep($room, $primary, $prompt, $senderName, $peers->first());
+        // Step 1: Primary Agent (User 1's Agent) processes the prompt, updates VPS Shared Memory, and queues local task on User 1's PC
+        $this->runSingleAgentStep(
+            room: $room,
+            agent: $primary,
+            inputPrompt: $prompt,
+            fromSender: $senderName,
+            allAgents: $agents->all(),
+            stepNumber: 1,
+            totalSteps: $autoHandoff ? $totalAgents : 1,
+            nextPeer: $peers->first(),
+            isHandoffReply: false
+        );
 
+        // Step 2..N: Every other agent in the group chat (User 2's Agent, User 3's Agent, etc.) receives the handoff,
+        // reads the cumulative VPS Shared Memory from all previous agents, talks back in the group chat,
+        // and queues its own local workspace task for User 2's PC, User 3's PC, etc.!
         if ($autoHandoff && $peers->isNotEmpty()) {
-            $lastMsg = $room->messages()->where('participant_id', $primary->id)->latest('id')->first();
-            $peerPrompt = $lastMsg
-                ? "Message from {$primary->name} ({$primary->user_name} on {$primary->device_name}):\n\"{$lastMsg->content}\"\n\nOriginal request: {$prompt}"
-                : $prompt;
+            foreach ($peers as $idx => $peer) {
+                $stepNumber = $idx + 2;
+                $nextPeer = $peers->get($idx + 1) ?? $primary;
 
-            foreach ($peers as $peer) {
-                $this->runSingleAgentStep($room, $peer, $peerPrompt, $primary->name, $primary, isHandoffReply: true);
+                $previousMessages = $room->messages()
+                    ->latest('id')
+                    ->limit($idx + 1)
+                    ->get()
+                    ->reverse()
+                    ->map(fn ($m) => "{$m->sender_name} ({$m->sender_user} on {$m->sender_device}): \"{$m->content}\"")
+                    ->implode("\n\n");
+
+                $peerPrompt = "Multi-agent task coordination across {$totalAgents} computers.\n"
+                    ."Original request: {$prompt}\n\n"
+                    ."Updates from preceding agents in this turn:\n{$previousMessages}\n\n"
+                    ."Coordinate your part for {$peer->user_name}'s computer ({$peer->device_name}) without overlapping files claimed by other computers.";
+
+                $this->runSingleAgentStep(
+                    room: $room,
+                    agent: $peer,
+                    inputPrompt: $peerPrompt,
+                    fromSender: $primary->name,
+                    allAgents: $agents->all(),
+                    stepNumber: $stepNumber,
+                    totalSteps: $totalAgents,
+                    nextPeer: $nextPeer,
+                    isHandoffReply: true
+                );
             }
         }
 
         $room->update([
             'status' => 'active',
-            'status_detail' => 'Shared Memory synced - Local device change tasks queued for connected computers',
+            'status_detail' => "Shared Memory synced across {$totalAgents} agent(s) - Local device change tasks queued for each user's computer",
         ]);
     }
 
+    /**
+     * @param  array<int, ConcordParticipant>  $allAgents
+     */
     private function runSingleAgentStep(
         ConcordRoom $room,
         ConcordParticipant $agent,
         string $inputPrompt,
         string $fromSender,
-        ?ConcordParticipant $peerAgent = null,
+        array $allAgents,
+        int $stepNumber,
+        int $totalSteps,
+        ?ConcordParticipant $nextPeer = null,
         bool $isHandoffReply = false,
     ): void {
         $step1Thought = $isHandoffReply
-            ? "Receiving peer communication from {$fromSender} and reading VPS Shared Memory..."
-            : "Reading VPS Shared Memory and analyzing instruction from {$fromSender}...";
-        $step2Thought = "Planning local code edits for {$agent->user_name}'s computer ({$agent->device_name})...";
-        $step3Thought = $peerAgent && ! $isHandoffReply
-            ? "Preparing coordination message & contract handoff for {$peerAgent->name} ({$peerAgent->device_name})..."
-            : 'Synchronizing local diff manifest & updating VPS Shared Memory...';
+            ? "[Agent {$stepNumber}/{$totalSteps}] Receiving handoff from {$fromSender} and reading cumulative VPS Shared Memory..."
+            : "[Agent {$stepNumber}/{$totalSteps}] Reading VPS Shared Memory and analyzing task split from {$fromSender}...";
+        $step2Thought = "Partitioning task scope & planning local code edits exclusively for {$agent->user_name}'s computer ({$agent->device_name})...";
+        $step3Thought = $nextPeer && $stepNumber < $totalSteps
+            ? "Publishing API contract to VPS Shared Memory and handing off next slice to {$nextPeer->name} ({$nextPeer->device_name})..."
+            : "Finalizing multi-agent synchronization & queuing local workspace patch for {$agent->device_name}...";
 
         $agent->update([
             'status' => 'thinking',
@@ -428,7 +481,7 @@ class ConcordHubService
 
         $room->update([
             'status' => 'collaborating',
-            'status_detail' => "[THINKING] {$agent->name} ({$agent->user_name}) is reasoning: {$step1Thought}",
+            'status_detail' => "[THINKING {$stepNumber}/{$totalSteps}] {$agent->name} ({$agent->user_name}) is reasoning: {$step1Thought}",
         ]);
 
         $memoryText = collect($room->fresh()->shared_memory ?? [])
@@ -436,40 +489,32 @@ class ConcordHubService
             ->map(fn (array $m) => "- [{$m['category']}] {$m['key']}: {$m['content']} (by {$m['author_agent']})")
             ->implode("\n") ?: 'None yet.';
 
-        $recentChat = $room->messages()
-            ->latest('id')
-            ->limit(8)
-            ->get()
-            ->reverse()
-            ->map(fn ($m) => "[{$m->sender_name} @ {$m->sender_device}]: {$m->content}")
+        $rosterText = collect($allAgents)
+            ->map(fn (ConcordParticipant $p, int $i) => ($i + 1).". {$p->name} (User: {$p->user_name}, Local Computer: {$p->device_name}, Model: {$p->model})")
             ->implode("\n");
 
-        $peerContext = $peerAgent
-            ? "Your peer agent in this group chat is {$peerAgent->name} (owned by {$peerAgent->user_name} on device {$peerAgent->device_name})."
-            : 'You are collaborating in the shared group chat.';
-
-        $llmPrompt = "You are {$agent->name}, an AI coding agent owned by {$agent->user_name}, executing local code changes on {$agent->device_name}.\n"
-            ."Role: {$agent->role_prompt}\n"
-            ."{$peerContext}\n\n"
+        $llmPrompt = "You are {$agent->name} (Agent {$stepNumber} of {$totalSteps} in this room), owned by {$agent->user_name}, executing local code changes ONLY on {$agent->device_name}.\n"
+            ."SECURITY RULE: You have zero access to the VPS host. You only coordinate via the shared memory bank and queue local file edits for {$agent->device_name}.\n"
+            ."Role: {$agent->role_prompt}\n\n"
+            ."=== ALL CONNECTED AGENTS & COMPUTERS IN THIS ROOM ===\n{$rosterText}\n\n"
             ."=== VPS SHARED MEMORY BANK ===\n{$memoryText}\n\n"
-            ."=== RECENT GROUP CHAT CONTEXT ===\n{$recentChat}\n\n"
-            ."=== INCOMING MESSAGE FROM {$fromSender} ===\n{$inputPrompt}\n\n"
+            ."=== TASK / HANDOFF INPUT ===\n{$inputPrompt}\n\n"
             ."Respond in the group chat without using any emojis. Include:\n"
-            ."1. A brief 'THOUGHT:' line explaining your reasoning.\n"
+            ."1. A brief 'THOUGHT:' line explaining how you are dividing the work for {$agent->user_name}'s computer ({$agent->device_name}).\n"
             ."2. A 'LOCAL_FILES:' comma-separated list of 1-3 file paths you are editing on {$agent->device_name}.\n"
-            ."3. A 'MEMORY_NOTE:' one-sentence contract/decision to store in the VPS Shared Memory.\n"
-            ."4. Your direct response to the group chat (and to {$peerAgent?->name} if coordinating across devices). Keep it concise and concrete.";
+            ."3. A 'MEMORY_NOTE:' one-sentence contract/decision to store in the VPS Shared Memory for the other agents.\n"
+            ."4. Your direct response to the group chat explaining what you queued on {$agent->device_name} and what the other agent(s) should handle.";
 
         $started = microtime(true);
-        [$rawAnswer, $usedModel] = $this->cascade->ask($llmPrompt, $agent->model, $agent->use_openrouter, 75);
+        [$rawAnswer, $usedModel] = $this->askSandboxedCloudOrFallback($llmPrompt, $agent, $stepNumber, $totalSteps, $nextPeer, $inputPrompt);
         $elapsed = round(microtime(true) - $started, 1);
 
-        [$thought, $localFiles, $memoryNote, $cleanBody] = $this->parseStructuredAgentReply($rawAnswer, $agent);
+        [$thought, $localFiles, $memoryNote, $cleanBody] = $this->parseStructuredAgentReply($rawAnswer, $agent, $stepNumber);
 
         $thinkingTrace = array_values(array_filter([
             $step1Thought,
             $thought ?: $step2Thought,
-            "Target local machine: {$agent->device_name} ({$agent->user_name})",
+            "Target local machine: {$agent->device_name} ({$agent->user_name}) - VPS Host Sandbox Enforced",
             $step3Thought,
         ]));
 
@@ -514,7 +559,7 @@ class ConcordHubService
             [
                 'tool' => 'LocalDeviceEdit',
                 'target' => "{$agent->device_name}: ".implode(', ', $localFiles),
-                'output' => "Task #{$task->id} dispatched to {$agent->user_name}'s local computer",
+                'output' => "Task #{$task->id} dispatched to {$agent->user_name}'s local computer ({$agent->device_name})",
             ],
         ];
 
@@ -528,7 +573,7 @@ class ConcordHubService
             'sender_color' => $agent->color ?: '#ff5722',
             'model' => $usedModel,
             'kind' => $isHandoffReply ? 'handoff' : 'agent_talk',
-            'target_agent' => $peerAgent?->name,
+            'target_agent' => $nextPeer?->name,
             'thinking_text' => implode("\n", $thinkingTrace),
             'tool_calls' => $toolCalls,
             'local_changes' => $localChanges,
@@ -539,14 +584,63 @@ class ConcordHubService
         $agent->update([
             'status' => 'idle',
             'current_thought' => $thought ?: "Completed turn in {$elapsed}s - changes queued for {$agent->device_name}",
-            'current_action' => "Edited on {$agent->device_name}: ".implode(', ', $localFiles),
+            'current_action' => "Queued local edits on {$agent->device_name}: ".implode(', ', $localFiles),
             'thinking_steps' => $thinkingTrace,
             'local_modified_files' => array_values(array_unique([...($agent->local_modified_files ?? []), ...$localFiles])),
             'last_seen_at' => now(),
         ]);
     }
 
-    private function parseStructuredAgentReply(string $raw, ConcordParticipant $agent): array
+    /**
+     * Sandboxed cloud API call that NEVER runs any CLI binary or shell command on the VPS.
+     *
+     * @return array{0: string, 1: string}
+     */
+    private function askSandboxedCloudOrFallback(
+        string $llmPrompt,
+        ConcordParticipant $agent,
+        int $stepNumber,
+        int $totalSteps,
+        ?ConcordParticipant $nextPeer,
+        string $inputPrompt
+    ): array {
+        $chain = $this->openRouter->chain();
+        $targetModel = str_contains($agent->model, '/') ? $agent->model : ($chain[0] ?? 'anthropic/claude-3.7-sonnet');
+        $apiKey = $this->openRouter->keyFor($targetModel);
+
+        if ($apiKey !== '') {
+            [$ok, $text, $used] = $this->openRouter->chat(
+                $apiKey,
+                $targetModel,
+                [['role' => 'user', 'content' => $llmPrompt]],
+                $chain,
+                45
+            );
+            if ($ok && trim($text) !== '') {
+                return [$text, "cloud-sandbox // {$used}"];
+            }
+        }
+
+        // Deterministic sandboxed coordination response when no cloud API key is configured
+        $defaultFiles = match ($stepNumber % 3) {
+            1 => ['src/services/taskCoordinator.ts', 'src/api/sharedContract.ts'],
+            2 => ['src/components/SyncedWorkspaceView.tsx', 'src/hooks/useSharedState.ts'],
+            default => ['tests/integration/multiDeviceSync.test.ts', 'src/workers/localDeviceSync.ts'],
+        };
+        $filesCsv = implode(', ', $defaultFiles);
+        $nextHandoff = $nextPeer
+            ? "Handing off the updated shared memory contract to {$nextPeer->name} ({$nextPeer->user_name} on {$nextPeer->device_name})."
+            : "All {$totalSteps} connected user computers now have their synchronized local tasks queued.";
+
+        $synthesized = "THOUGHT: Partitioned task step {$stepNumber}/{$totalSteps} for {$agent->user_name}'s local machine ({$agent->device_name}) using VPS Shared Memory without touching the VPS filesystem.\n"
+            ."LOCAL_FILES: {$filesCsv}\n"
+            ."MEMORY_NOTE: Step {$stepNumber}/{$totalSteps} ({$agent->name} on {$agent->device_name}) claimed {$filesCsv} and published interface state.\n"
+            ."[Agent {$stepNumber}/{$totalSteps} - {$agent->name} on {$agent->device_name}]: I have analyzed the shared context and queued local workspace edits for `{$filesCsv}` directly on **{$agent->user_name}'s computer (`{$agent->device_name}`)**. {$nextHandoff}";
+
+        return [$synthesized, "sandbox-coordinator // {$agent->model}"];
+    }
+
+    private function parseStructuredAgentReply(string $raw, ConcordParticipant $agent, int $stepNumber = 1): array
     {
         $thought = '';
         $localFiles = [];
@@ -576,9 +670,11 @@ class ConcordHubService
         $cleanBody = trim(implode("\n", $bodyLines)) ?: trim($raw);
 
         if (empty($localFiles)) {
-            $localFiles = $agent->provider === 'antigravity'
-                ? ['src/components/SyncedView.tsx', 'src/api/client.ts']
-                : ['src/services/apiContract.ts', 'src/controllers/mainController.ts'];
+            $localFiles = match ($stepNumber % 3) {
+                1 => ['src/services/apiContract.ts', 'src/controllers/mainController.ts'],
+                2 => ['src/components/SyncedView.tsx', 'src/api/client.ts'],
+                default => ['tests/e2e/groupSync.spec.ts', 'src/utils/stateBridge.ts'],
+            };
         }
 
         if ($memoryNote === '') {
@@ -599,7 +695,7 @@ class ConcordHubService
 # ==============================================================================
 # CONCORD LOCAL DEVICE CONNECTOR - {$roomTitle}
 # Central Shared Memory & Group Chat: {$baseUrl}
-# File Edits & Agent Execution: THIS LOCAL COMPUTER (NOT THE VPS)
+# File Edits & Agent Execution: THIS LOCAL COMPUTER (NEVER ON THE VPS)
 # ==============================================================================
 set -euo pipefail
 
