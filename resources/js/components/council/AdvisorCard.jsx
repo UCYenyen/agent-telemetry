@@ -32,7 +32,7 @@ export default function AdvisorCard({ advisor, onEdit }) {
             <div className="advisor-card-top">
                 <div className="advisor-identity">
                     <div className="advisor-icon" style={{ borderColor: color }}>
-                        {advisor.icon || '🧠'}
+                        {advisor.icon || '[MEM]'}
                     </div>
                     <div className="advisor-name" title={advisor.name}>
                         {advisor.name}
@@ -57,10 +57,10 @@ export default function AdvisorCard({ advisor, onEdit }) {
 
             <div className="advisor-card-foot">
                 <button type="button" className="quiet muted btn-xs" onClick={onEdit}>
-                    ✎ EDIT LENS
+                    EDIT EDIT LENS
                 </button>
                 <button type="button" className="quiet btn-xs" onClick={remove}>
-                    ✕ REMOVE
+                    X REMOVE
                 </button>
             </div>
         </div>

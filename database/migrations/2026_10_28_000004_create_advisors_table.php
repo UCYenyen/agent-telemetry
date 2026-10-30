@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('advisors', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('icon')->default('🧠');
+            $table->string('icon')->default('AD');
             $table->string('color')->default('#a855f7');
             $table->string('model');
             $table->boolean('use_openrouter')->default(false);

@@ -28,7 +28,7 @@ return new class extends Migration
             $table->foreignUuid('concord_room_id')->constrained()->cascadeOnDelete();
             $table->string('email');
             $table->string('name')->nullable();
-            $table->string('role')->default('editor'); // viewer | editor
+            $table->string('role')->default('no_role'); // no_role | team_member | admin
             $table->string('invite_token', 64)->unique();
             $table->timestamp('accepted_at')->nullable();
             $table->timestamps();
@@ -45,7 +45,7 @@ return new class extends Migration
             $table->string('execution_mode')->default('local_device'); // local_device | cloud_relay
             $table->string('provider')->default('claude'); // claude | antigravity | openrouter | codex | cursor | human
             $table->string('model')->default('claude-sonnet-5-5-high');
-            $table->string('avatar')->default('✦');
+            $table->string('avatar')->default('AG');
             $table->string('color')->default('#ff5722');
             $table->text('role_prompt')->nullable();
             $table->boolean('use_openrouter')->default(false);
@@ -67,7 +67,7 @@ return new class extends Migration
             $table->string('sender_user')->nullable();
             $table->string('sender_device')->nullable();
             $table->string('sender_kind')->default('agent');
-            $table->string('sender_icon')->default('✦');
+            $table->string('sender_icon')->default('AG');
             $table->string('sender_color')->default('#ff5722');
             $table->string('model')->nullable();
             $table->string('kind')->default('message'); // message | prompt | agent_talk | handoff | local_edit | memory_update | claim

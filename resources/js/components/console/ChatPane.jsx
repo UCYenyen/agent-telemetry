@@ -26,11 +26,11 @@ export default function ChatPane({ session, kind, messages, terminalOutput, tele
         <div className="ow-chat-pane cc-chat-pane" ref={pane}>
             <div className="cc-telemetry-strip">
                 <div className="cc-telemetry-col">
-                    <span className="cc-telemetry-label">✻ LIVE AGENT THINKING</span>
+                    <span className="cc-telemetry-label">* LIVE AGENT THINKING</span>
                     <span className={`cc-telemetry-val${working ? ' is-pulsing' : ''}`}>{currentThought}</span>
                 </div>
                 <div className="cc-telemetry-col">
-                    <span className="cc-telemetry-label">⏺ CURRENT ACTION / TOOL</span>
+                    <span className="cc-telemetry-label">CURRENT ACTION / TOOL</span>
                     <span className="cc-telemetry-val mono">{currentAction}</span>
                 </div>
                 <div className="cc-telemetry-col small">
@@ -42,18 +42,18 @@ export default function ChatPane({ session, kind, messages, terminalOutput, tele
             {isEmpty ? (
                 <div className="cc-empty-wrap">
                     <EmptyState
-                        glyph={AGENTS[kind]?.icon || '✦'}
+                        glyph={AGENTS[kind]?.icon || 'AI'}
                         title={session.title || session.name}
                         description={`Claude Code Prompting Interface connected (${kind === 'openrouter' ? 'OpenRouter Cloud API' : 'Live Agent Telemetry Stream'}). Watch live agent thinking, file edits, and tool calls in real time.`}
                     />
                     {onQuickPrompt && (
                         <div className="ow-chips cc-starter-grid">
                             <button type="button" className="ow-chip" onClick={() => onQuickPrompt('Explain your current architecture plan and list any files you are working on.')}>
-                                <div className="ow-chip-title">✻ INSPECT THINKING & SCOPE</div>
+                                <div className="ow-chip-title">INSPECT THINKING & SCOPE</div>
                                 <div className="ow-chip-sub">Ask agent to share its current plan and file claims</div>
                             </button>
                             <button type="button" className="ow-chip" onClick={() => onQuickPrompt('Review recent changes, run tests, and summarize any edge cases.')}>
-                                <div className="ow-chip-title">⏺ VERIFY & TEST</div>
+                                <div className="ow-chip-title">VERIFY & TEST</div>
                                 <div className="ow-chip-sub">Run verification suite and report findings</div>
                             </button>
                         </div>
@@ -67,7 +67,7 @@ export default function ChatPane({ session, kind, messages, terminalOutput, tele
                     {hasLiveTurn && (
                         <ChatMessage
                             live={working}
-                            avatar="✦"
+                            avatar="AI"
                             sender={`${(session.title || session.name).toUpperCase()} // LIVE AGENT`}
                             thinkingSteps={thinkingSteps}
                             toolCalls={toolCalls}
@@ -80,7 +80,7 @@ export default function ChatPane({ session, kind, messages, terminalOutput, tele
                     )}
                 </div>
             )}
-            {working && <WorkingIndicator label={`✻ ${currentThought}`} />}
+            {working && <WorkingIndicator label={`* ${currentThought}`} />}
         </div>
     );
 }

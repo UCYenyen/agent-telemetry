@@ -3,8 +3,8 @@ import OpenRouterToggle from '../common/OpenRouterToggle';
 import ModelPicker from './ModelPicker';
 
 const TABS = [
-    ['chat', '✦ CLAUDE CODE UI'],
-    ['console', '⌘ RAW INSPECTOR'],
+    ['chat', 'AI CLAUDE CODE UI'],
+    ['console', ' RAW INSPECTOR'],
 ];
 
 export default function ConsoleHeader({
@@ -41,7 +41,7 @@ export default function ConsoleHeader({
                         onClick={onToggleSidebar}
                         title="Toggle Live Fleet Thinking Sidebar"
                     >
-                        ✻ AGENTS
+                        * AGENTS
                     </button>
                 )}
                 <div className="cc-session-identity">
@@ -53,7 +53,7 @@ export default function ConsoleHeader({
                 <AgentBadge kind={kind} plain />
                 <span className={`state ow-state cc-live-pill ${working ? 'working' : 'idle'}`}>
                     <span className="dot" />
-                    <span>{working ? `✻ ${telemetry?.current_action || 'THINKING…'}` : 'READY'}</span>
+                    <span>{working ? `* ${telemetry?.current_action || 'THINKING…'}` : 'READY'}</span>
                 </span>
             </div>
 
@@ -69,10 +69,10 @@ export default function ConsoleHeader({
                     ↻
                 </button>
                 <button type="button" className="ow-icon-btn" onClick={onClear} title="Clear chat history" aria-label="Clear chat history">
-                    🗑
+                    CLEAR
                 </button>
                 <button type="button" className="ow-icon-btn" onClick={onClose} title="Close Fullscreen (Esc)" aria-label="Close console">
-                    ✕
+                    X
                 </button>
             </div>
         </div>

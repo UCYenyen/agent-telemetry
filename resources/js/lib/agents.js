@@ -1,7 +1,7 @@
 export const AGENTS = {
-    claude: { icon: '⚡', label: 'CLAUDE', fleet: 'Anthropic Claude Fleet' },
-    antigravity: { icon: '✨', label: 'ANTIGRAVITY', fleet: 'Google Antigravity Fleet' },
-    openrouter: { icon: '🌐', label: 'OPENROUTER', fleet: 'OpenRouter API Models' },
+    claude: { icon: '[FAST]', label: 'CLAUDE', fleet: 'Anthropic Claude Fleet' },
+    antigravity: { icon: '[AGY]', label: 'ANTIGRAVITY', fleet: 'Google Antigravity Fleet' },
+    openrouter: { icon: '[OR]', label: 'OPENROUTER', fleet: 'OpenRouter API Models' },
 };
 
 export function agentKind(session) {

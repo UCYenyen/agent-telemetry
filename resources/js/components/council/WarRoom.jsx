@@ -65,7 +65,7 @@ export default function WarRoom({ summary, onAsk }) {
             <ChatComposer
                 rows={2}
                 placeholder="Present a high-stakes decision, architecture tradeoff, or strategy question to the Council… (Enter to convene, Shift+Enter for newline)"
-                submitLabel="⚖️ CONVENE COUNCIL ↵"
+                submitLabel="[COUNCIL] CONVENE COUNCIL ↵"
                 onSubmit={onAsk}
                 hint={
                     <>

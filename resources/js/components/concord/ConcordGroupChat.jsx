@@ -2,46 +2,67 @@ import { useEffect, useRef, useState } from 'react';
 
 const GROUP_QUICK_PROMPTS = [
     {
-        label: '🤝 Cross-Computer Handoff (User 1 → User 2)',
-        text: 'User 1 agent: implement the backend endpoint on User 1’s local computer and publish the payload schema to VPS shared memory. Then communicate with User 2’s agent so it updates the React UI on User 2’s computer.',
+        label: 'Cross-Computer Handoff (User 1 -> User 2)',
+        text: 'User 1 agent: implement the backend endpoint on User 1 local computer and publish the payload schema to VPS shared memory. Then communicate with User 2 agent so it updates the React UI on User 2 computer.',
     },
     {
-        label: '🧠 Sync Architecture Contract',
-        text: 'Review our shared memory bank on the VPS, agree on the WebSocket + REST telemetry contract, and queue the respective file edits on each user’s local computer.',
+        label: 'Sync Architecture Contract',
+        text: 'Review our shared memory bank on the VPS, agree on the WebSocket + REST telemetry contract, and queue the respective file edits on each user local computer.',
     },
     {
-        label: '🛡️ Audit Cross-Device File Locks',
+        label: 'Audit Cross-Device File Locks',
         text: 'Check active file claims across User 1 and User 2 computers so neither agent edits conflicting files, then propose the implementation split.',
     },
 ];
 
 function ConcordMessageCard({ message }) {
     const [thoughtOpen, setThoughtOpen] = useState(true);
-    const isHuman = message.sender_type === 'human';
-    const isSystem = message.sender_type === 'system';
-    const steps = Array.isArray(message.thinking_steps) ? message.thinking_steps : [];
+    const senderKind = message.sender_kind || message.sender_type || 'agent';
+    const isHuman = senderKind === 'human';
+    const isSystem = senderKind === 'system' || senderKind === 'memory';
+
+    const rawSteps = Array.isArray(message.thinking_steps)
+        ? message.thinking_steps
+        : message.thinking_text
+          ? String(message.thinking_text).split('\n').filter(Boolean)
+          : [];
     const tools = Array.isArray(message.tool_calls) ? message.tool_calls : [];
-    const localChanges = message.local_changes || null;
+
+    const localChangesRaw = message.local_changes;
+    const localFiles = Array.isArray(localChangesRaw)
+        ? localChangesRaw.map((c) => (typeof c === 'string' ? c : c.file)).filter(Boolean)
+        : Array.isArray(localChangesRaw?.files)
+          ? localChangesRaw.files
+          : [];
+    const localTargetDevice = (!Array.isArray(localChangesRaw) && localChangesRaw?.executed_on_device)
+        || (Array.isArray(localChangesRaw) && localChangesRaw[0]?.device)
+        || message.sender_device;
+    const localOwner = (!Array.isArray(localChangesRaw) && localChangesRaw?.owner)
+        || (Array.isArray(localChangesRaw) && localChangesRaw[0]?.user)
+        || message.sender_user
+        || message.sender_name;
+
+    const textContent = message.content || message.body || '';
 
     return (
-        <article className={`concord-msg kind-${message.kind || 'chat'} sender-${message.sender_type}`}>
+        <article className={`concord-msg kind-${message.kind || 'chat'} sender-${isHuman ? 'human' : 'agent'}`}>
             <header className="concord-msg-head">
                 <div className="concord-msg-identity">
-                    <span className={`concord-sender-dot ${message.sender_type}`} />
+                    <span className={`concord-sender-dot ${isHuman ? 'human' : 'agent'}`} />
                     <strong className="concord-sender-name">{message.sender_name}</strong>
                     {message.sender_device && (
                         <span className="concord-device-pill" title="Prompts & file edits execute on this local computer">
-                            💻 {message.sender_device}
+                            PC: {message.sender_device}
                         </span>
                     )}
                     {message.model && (
                         <span className="concord-model-pill">
-                            {message.provider ? `${message.provider} / ` : ''}{message.model}
+                            {message.model}
                         </span>
                     )}
                     {message.target_agent && message.target_agent !== 'all' && (
                         <span className="concord-handoff-pill">
-                            → @{message.target_agent}
+                            -&gt; @{message.target_agent}
                         </span>
                     )}
                 </div>
@@ -50,24 +71,24 @@ function ConcordMessageCard({ message }) {
                 </span>
             </header>
 
-            {(message.thinking_summary || steps.length > 0) && (
+            {(message.thinking_summary || rawSteps.length > 0) && (
                 <div className="cc-thinking-drawer concord-thinking-drawer">
                     <button
                         type="button"
                         className="cc-thinking-toggle"
                         onClick={() => setThoughtOpen((prev) => !prev)}
                     >
-                        <span className="cc-thinking-spark">✻</span>
+                        <span className="cc-thinking-spark">*</span>
                         <span className="cc-thinking-title">
-                            {message.thinking_summary || `Thought process (${steps.length} step${steps.length === 1 ? '' : 's'})`}
+                            {message.thinking_summary || `Thought process (${rawSteps.length} step${rawSteps.length === 1 ? '' : 's'})`}
                         </span>
-                        <span className="cc-thinking-chevron">{thoughtOpen ? '▾' : '▸'}</span>
+                        <span className="cc-thinking-chevron">{thoughtOpen ? 'v' : '>'}</span>
                     </button>
-                    {thoughtOpen && steps.length > 0 && (
+                    {thoughtOpen && rawSteps.length > 0 && (
                         <div className="cc-thinking-body">
-                            {steps.map((step, index) => (
+                            {rawSteps.map((step, index) => (
                                 <div key={index} className="cc-thinking-step">
-                                    <span className="cc-step-bullet">⏺</span>
+                                    <span className="cc-step-bullet">-</span>
                                     <span className="cc-step-text">{step}</span>
                                 </div>
                             ))}
@@ -81,13 +102,13 @@ function ConcordMessageCard({ message }) {
                     {tools.map((item, idx) => (
                         <div key={idx} className="cc-tool-card">
                             <div className="cc-tool-head">
-                                <span className="cc-tool-dot">⏺</span>
+                                <span className="cc-tool-dot">&gt;</span>
                                 <span className="cc-tool-name">{item.tool}</span>
-                                <span className="cc-tool-summary">{item.summary}</span>
+                                <span className="cc-tool-summary">{item.target || item.summary}</span>
                             </div>
                             {item.output && (
                                 <div className="cc-tool-output">
-                                    <span className="cc-tool-branch">⎿</span>
+                                    <span className="cc-tool-branch">|-</span>
                                     <span>{item.output}</span>
                                 </div>
                             )}
@@ -96,14 +117,14 @@ function ConcordMessageCard({ message }) {
                 </div>
             )}
 
-            {localChanges && Array.isArray(localChanges.files) && localChanges.files.length > 0 && (
+            {localFiles.length > 0 && (
                 <div className="concord-local-edit-banner">
                     <div className="concord-local-edit-head">
-                        <span>💻 Local Computer Execution Target: <strong>{localChanges.executed_on_device}</strong> ({localChanges.owner})</span>
+                        <span>Local Computer Execution Target: <strong>{localTargetDevice}</strong> ({localOwner})</span>
                         <span className="concord-local-badge">LOCAL WORKSPACE ONLY (NOT VPS)</span>
                     </div>
                     <div className="concord-task-files">
-                        {localChanges.files.map((file, idx) => (
+                        {localFiles.map((file, idx) => (
                             <code key={idx} className="concord-file-chip">{file}</code>
                         ))}
                     </div>
@@ -111,7 +132,7 @@ function ConcordMessageCard({ message }) {
             )}
 
             <div className="cc-response-body concord-msg-body" style={{ whiteSpace: 'pre-wrap' }}>
-                {message.body || ''}
+                {textContent}
             </div>
         </article>
     );
@@ -123,6 +144,7 @@ export default function ConcordGroupChat({
     sending,
     onSendPrompt,
     onOpenConnectModal,
+    onOpenRolesModal,
 }) {
     const participants = room?.participants || [];
     const messages = room?.messages || [];
@@ -151,6 +173,7 @@ export default function ConcordGroupChat({
         if (!promptText.trim() || !canEdit || sending) return;
 
         onSendPrompt({
+            content: promptText.trim(),
             body: promptText.trim(),
             participant_id: activeParticipant?.id ?? null,
             sender_name: activeParticipant ? `${activeParticipant.user_name}` : 'Room Collaborator',
@@ -168,39 +191,43 @@ export default function ConcordGroupChat({
         }
     };
 
+    const projectRole = room?.project_role || 'no_role';
+
     return (
         <div className="concord-chat-column">
-            {/* Live People & Agents Roster with Live Thinking Telemetry */}
             <div className="concord-roster-strip">
                 <div className="concord-roster-head">
-                    <span className="concord-section-title">👥 PEOPLE & LOCAL AGENTS IN GROUP CHAT ({participants.length})</span>
-                    <button type="button" className="btn btn-xs btn-emerald" onClick={onOpenConnectModal}>
-                        + Connect Another User / Computer
-                    </button>
+                    <span className="concord-section-title">PEOPLE & LOCAL AGENTS IN GROUP CHAT ({participants.length})</span>
+                    {canEdit && (
+                        <button type="button" className="btn btn-xs btn-emerald" onClick={onOpenConnectModal}>
+                            + Connect Another User / Computer
+                        </button>
+                    )}
                 </div>
                 <div className="concord-roster-cards">
                     {participants.map((p) => {
                         const isBusy = p.status === 'thinking' || p.status === 'editing_local' || sending;
+                        const agentDisplayName = p.name || p.agent_name || 'Local Agent';
                         return (
                             <div key={p.id} className={`concord-participant-card${isBusy ? ' busy' : ''}`}>
                                 <div className="concord-p-top">
-                                    <span className="concord-p-avatar" style={{ background: p.avatar_color || '#10b981' }}>
+                                    <span className="concord-p-avatar" style={{ background: p.color || p.avatar_color || '#10b981' }}>
                                         {(p.user_name || 'A').slice(0, 1).toUpperCase()}
                                     </span>
                                     <div className="concord-p-meta">
                                         <div className="concord-p-name">
-                                            <strong>{p.user_name}</strong> · <span>{p.agent_name}</span>
+                                            <strong>{p.user_name}</strong> - <span>{agentDisplayName}</span>
                                         </div>
                                         <div className="concord-p-sub">
-                                            💻 {p.device_name} · <code>{p.provider}/{p.model}</code>
+                                            PC: {p.device_name} - <code>{p.provider}/{p.model}</code>
                                         </div>
                                     </div>
                                     <span className={`concord-p-status status-${p.status || 'idle'}`}>
-                                        {p.status === 'thinking' ? '✻ Thinking…' : p.status === 'editing_local' ? '⏺ Editing PC' : '● Online'}
+                                        {p.status === 'thinking' ? 'THINKING...' : p.status === 'editing_local' ? 'EDITING PC' : 'ONLINE'}
                                     </span>
                                 </div>
                                 <div className="concord-p-thought">
-                                    <span className="cc-thinking-spark">✻</span>
+                                    <span className="cc-thinking-spark">*</span>
                                     <span>{p.current_thought || 'Synced with VPS shared memory bank.'}</span>
                                 </div>
                                 {Array.isArray(p.local_modified_files) && p.local_modified_files.length > 0 && (
@@ -217,7 +244,6 @@ export default function ConcordGroupChat({
                 </div>
             </div>
 
-            {/* Claude Code-Style Group Chat Stream */}
             <div className="concord-feed" ref={feedRef}>
                 {messages.map((msg) => (
                     <ConcordMessageCard key={msg.id} message={msg} />
@@ -228,14 +254,13 @@ export default function ConcordGroupChat({
                         <div className="cc-live-stream-head">
                             <span className="cc-spinner" />
                             <span className="cc-live-stream-title">
-                                ✻ Agents are reasoning on VPS Shared Memory & queueing local file edits for each user’s computer…
+                                Agents are reasoning on VPS Shared Memory & queueing local file edits for each user computer...
                             </span>
                         </div>
                     </div>
                 )}
             </div>
 
-            {/* Claude Code-Style Fullscreen Prompt Composer */}
             {canEdit ? (
                 <form className="cc-composer-shell concord-composer" onSubmit={handleSubmit}>
                     <div className="concord-composer-controls">
@@ -248,7 +273,7 @@ export default function ConcordGroupChat({
                             >
                                 {participants.map((p) => (
                                     <option key={p.id} value={p.id}>
-                                        {p.user_name} ({p.device_name} · {p.agent_name})
+                                        {p.user_name} ({p.device_name} - {p.name || p.agent_name})
                                     </option>
                                 ))}
                             </select>
@@ -261,10 +286,10 @@ export default function ConcordGroupChat({
                                 value={targetAgent}
                                 onChange={(e) => setTargetAgent(e.target.value)}
                             >
-                                <option value="all">@All Agents — Collaborate & Handoff Across Computers</option>
+                                <option value="all">@All Agents - Collaborate & Handoff Across Computers</option>
                                 {participants.map((p) => (
-                                    <option key={p.id} value={p.agent_name}>
-                                        @{p.agent_name} ({p.user_name}’s Computer: {p.device_name})
+                                    <option key={p.id} value={p.id}>
+                                        @{p.name || p.agent_name} ({p.user_name} Computer: {p.device_name})
                                     </option>
                                 ))}
                             </select>
@@ -285,34 +310,36 @@ export default function ConcordGroupChat({
                     </div>
 
                     <div className="cc-composer-box">
-                        <div className="cc-composer-prompt-icon">❯</div>
+                        <div className="cc-composer-prompt-icon">&gt;</div>
                         <textarea
                             className="cc-composer-input"
                             rows={2}
                             value={promptText}
                             onChange={(e) => setPromptText(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder="Prompt the group chat… Agent 1 will edit User 1's computer, talk to Agent 2 on VPS shared memory, and Agent 2 will edit User 2's computer."
+                            placeholder="Prompt the group chat... Agent 1 will edit User 1 computer, talk to Agent 2 on VPS shared memory, and Agent 2 will edit User 2 computer."
                         />
                         <button type="submit" className="cc-composer-send" disabled={sending || !promptText.trim()}>
-                            {sending ? '✻ Syncing…' : 'Send ↵'}
+                            {sending ? 'Syncing...' : 'Send [Enter]'}
                         </button>
                     </div>
 
                     <div className="cc-composer-footer">
                         <span className="cc-composer-hint">
-                            <kbd>Enter</kbd> to send · <kbd>Shift + Enter</kbd> for newline
+                            <kbd>Enter</kbd> to send - <kbd>Shift + Enter</kbd> for newline
                         </span>
                         <span className="cc-composer-mode">
-                            ● VPS Shared Context Window · Local Edits Execute on Each User’s Computer
+                            ACTIVE ROLE: {projectRole.toUpperCase()} // VPS Shared Context Window - Local Edits Execute on Each User Computer
                         </span>
                     </div>
                 </form>
             ) : (
                 <div className="concord-view-only-bar">
-                    <span>👀 <strong>View-Only Access</strong> — You can watch the live multi-agent group chat, reasoning steps, and VPS shared memory bank in real time.</span>
-                    <button type="button" className="btn btn-xs" onClick={onOpenConnectModal}>
-                        View Local Connector & MCP Info
+                    <div>
+                        <strong>VIEW-ONLY ACCESS (PROJECT ROLE: {projectRole})</strong> - Users with <code>no_role</code> can watch the live multi-agent group chat, reasoning traces, and VPS shared memory bank, but cannot send prompts or edit. Ask an <code>admin</code> to set your project role to <code>team_member</code> (or enable Anyone with link can edit).
+                    </div>
+                    <button type="button" className="btn btn-xs" onClick={onOpenRolesModal}>
+                        View Role Permissions
                     </button>
                 </div>
             )}

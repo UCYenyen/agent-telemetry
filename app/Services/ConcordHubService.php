@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Jobs\RunConcordAgentTalk;
-use App\Models\ConcordLocalTask;
 use App\Models\ConcordParticipant;
 use App\Models\ConcordRoom;
 use Illuminate\Support\Str;
@@ -11,6 +10,65 @@ use Illuminate\Support\Str;
 class ConcordHubService
 {
     public function __construct(private LlmCascade $cascade) {}
+
+    public static function rolesCatalog(): array
+    {
+        return [
+            [
+                'id' => 'admin',
+                'label' => 'admin',
+                'title' => 'Admin (Platform & Project Owner)',
+                'can_view_vps_fleet' => true,
+                'can_create_room' => true,
+                'can_manage_roles' => true,
+                'can_edit_group_chat' => true,
+                'can_view_group_chat' => true,
+                'description' => 'Full platform and project privileges. Only Admin can view and operate the live VPS Claude / Antigravity Fleet sessions, create or delete Group Chat projects, change project link access modes, and assign per-project roles (team_member or no_role) to invited users. Admin can also view and edit all Group Chat projects.',
+                'permissions' => [
+                    'Access and control live VPS Claude / Antigravity Fleet sessions & LLM Council',
+                    'Create and delete Group Chat projects/sessions',
+                    'Invite users by email and set each member role to team_member or no_role',
+                    'Configure link sharing mode (Restricted, Anyone can view, or Anyone can edit)',
+                    'Full Group Chat edit & view access (send prompts, connect local PC/MCP, and edit shared memory)',
+                ],
+            ],
+            [
+                'id' => 'team_member',
+                'label' => 'team_member',
+                'title' => 'Team Member (Project Editor & Collaborator)',
+                'can_view_vps_fleet' => false,
+                'can_create_room' => false,
+                'can_manage_roles' => false,
+                'can_edit_group_chat' => true,
+                'can_view_group_chat' => true,
+                'description' => 'Active project collaborator. Can both view and edit inside the Group Chat project they are assigned to: send prompts, coordinate multi-agent handoffs, connect their own local computer / CLI agent so file changes execute on their local machine, and pin updates to the VPS Shared Memory Bank. Cannot view the Admin live VPS Fleet sessions or create new Group Chat projects.',
+                'permissions' => [
+                    'View live Group Chat messages, agent thinking traces, and VPS Shared Memory',
+                    'Send prompts and trigger cross-computer multi-agent handoffs in the Group Chat',
+                    'Connect their local computer / CLI agent via 1-button registration, 1-line script, or Remote MCP',
+                    'Write and pin architectural contracts to the project VPS Shared Memory Bank',
+                    'Cannot access Admin private live VPS Claude Fleet sessions or create new projects',
+                ],
+            ],
+            [
+                'id' => 'no_role',
+                'label' => 'no_role',
+                'title' => 'No Role (Default — Read-Only Group Chat Viewer)',
+                'can_view_vps_fleet' => false,
+                'can_create_room' => false,
+                'can_manage_roles' => false,
+                'can_edit_group_chat' => false,
+                'can_view_group_chat' => true,
+                'description' => 'Default role for all newly registered users and unpromoted members. Users with no_role cannot access live VPS Fleet sessions and can only view the Group Chat in read-only mode (watching live agent conversations, thinking steps, and shared memory) unless the Admin sets the project link mode to Anyone with link can edit (which bypasses per-project role checks) or upgrades their project role to team_member.',
+                'permissions' => [
+                    'Assigned by default to every new user account upon sign-up',
+                    'View-only access to the Group Chat (watch live agent talks, thinking steps, and shared memory)',
+                    'Cannot send prompts, connect local computers for edits, or modify shared memory (unless bypassed by Anyone with link can edit)',
+                    'Cannot access Admin private live VPS Claude Fleet sessions or create new projects',
+                ],
+            ],
+        ];
+    }
 
     public function ensureDefaultRoom(): ConcordRoom
     {
@@ -24,9 +82,9 @@ class ConcordHubService
             'title' => 'Concord Multi-Agent Shared Workspace',
             'description' => 'Central VPS Context Memory & Multi-Agent Group Chat. Prompts & file edits execute on each user\'s own computer while all context memory and agent-to-agent talks live here.',
             'owner_email' => 'bryankunhahaha@gmail.com',
-            'access_mode' => 'link_edit',
+            'access_mode' => 'invite_only',
             'status' => 'active',
-            'status_detail' => 'Shared Memory synchronized · Ready for cross-device agent collaboration',
+            'status_detail' => 'Shared Memory synchronized - Ready for cross-device agent collaboration',
             'shared_memory' => [
                 [
                     'id' => 'mem_arch_1',
@@ -44,18 +102,18 @@ class ConcordHubService
         $room->participants()->createMany([
             [
                 'kind' => 'agent',
-                'name' => 'Claude Code · User 1',
+                'name' => 'Claude Code - User 1',
                 'user_name' => 'User 1 (Owner)',
                 'account_email' => 'bryankunhahaha@gmail.com',
                 'device_name' => 'User-1-Workstation',
                 'execution_mode' => 'local_device',
                 'provider' => 'claude',
                 'model' => 'claude-sonnet-5-5-high',
-                'avatar' => '🟠',
+                'avatar' => 'A1',
                 'color' => '#ff5722',
                 'role_prompt' => 'Primary architecture & backend/frontend agent for User 1. Edits files on User 1\'s local computer and coordinates API contracts with User 2\'s agent.',
                 'status' => 'idle',
-                'current_thought' => 'Connected to VPS Shared Memory — waiting for User 1 prompt or peer message',
+                'current_thought' => 'Connected to VPS Shared Memory - waiting for User 1 prompt or peer message',
                 'current_action' => 'Idle on User-1-Workstation',
                 'thinking_steps' => ['Synchronized with VPS shared context window', 'Ready to edit files locally on User-1-Workstation'],
                 'claimed_files' => [],
@@ -64,14 +122,14 @@ class ConcordHubService
             ],
             [
                 'kind' => 'agent',
-                'name' => 'Antigravity Gemini · User 2',
+                'name' => 'Antigravity Gemini - User 2',
                 'user_name' => 'User 2 (Collaborator)',
                 'account_email' => 'collaborator@team.dev',
                 'device_name' => 'User-2-Laptop',
                 'execution_mode' => 'local_device',
                 'provider' => 'antigravity',
                 'model' => 'gemini-3.8-flash-high',
-                'avatar' => '🟣',
+                'avatar' => 'A2',
                 'color' => '#00d2ff',
                 'role_prompt' => 'Partner agent for User 2. Communicates with User 1\'s agent over the VPS shared context window and applies corresponding code changes directly on User 2\'s computer.',
                 'status' => 'idle',
@@ -93,9 +151,9 @@ class ConcordHubService
             'title' => $data['title'],
             'description' => $data['description'] ?? 'Cross-account multi-agent group chat with centralized VPS context memory and local device execution.',
             'owner_email' => $data['owner_email'] ?? 'bryankunhahaha@gmail.com',
-            'access_mode' => $data['access_mode'] ?? 'link_edit',
+            'access_mode' => $data['access_mode'] ?? 'invite_only',
             'status' => 'active',
-            'status_detail' => 'Room initialized — connect local agents via 1-click link or MCP',
+            'status_detail' => 'Room initialized - connect local agents via 1-click link or MCP',
             'shared_memory' => [
                 [
                     'id' => 'mem_init',
@@ -113,14 +171,14 @@ class ConcordHubService
         $room->participants()->createMany([
             [
                 'kind' => 'agent',
-                'name' => 'Claude Code · User 1',
+                'name' => 'Claude Code - User 1',
                 'user_name' => 'User 1',
                 'account_email' => $data['owner_email'] ?? 'bryankunhahaha@gmail.com',
                 'device_name' => 'User-1-Computer',
                 'execution_mode' => 'local_device',
                 'provider' => 'claude',
                 'model' => 'claude-sonnet-5-5-high',
-                'avatar' => '🟠',
+                'avatar' => 'A1',
                 'color' => '#ff5722',
                 'role_prompt' => 'Agent 1 operating on User 1\'s local computer.',
                 'status' => 'idle',
@@ -133,14 +191,14 @@ class ConcordHubService
             ],
             [
                 'kind' => 'agent',
-                'name' => 'Antigravity · User 2',
+                'name' => 'Antigravity - User 2',
                 'user_name' => 'User 2',
                 'account_email' => 'user2@team.dev',
                 'device_name' => 'User-2-Computer',
                 'execution_mode' => 'local_device',
                 'provider' => 'antigravity',
                 'model' => 'gemini-3.8-flash-high',
-                'avatar' => '🟣',
+                'avatar' => 'A2',
                 'color' => '#00d2ff',
                 'role_prompt' => 'Agent 2 operating on User 2\'s local computer.',
                 'status' => 'idle',
@@ -171,7 +229,7 @@ class ConcordHubService
             'updated_at' => now()->toIso8601String(),
         ];
 
-        $index = $memories->search(fn (array $item) => ($item['key'] ?? '') === $key);
+        $index = $memories->search(fn (array $item) => is_array($item) && ($item['key'] ?? '') === $key);
         if ($index !== false) {
             $memories[$index] = $record;
         } else {
@@ -185,7 +243,7 @@ class ConcordHubService
                 'sender_name' => $record['author_agent'],
                 'sender_user' => $record['author_user'],
                 'sender_kind' => 'memory',
-                'sender_icon' => '🧠',
+                'sender_icon' => 'MEM',
                 'sender_color' => '#a855f7',
                 'kind' => 'memory_update',
                 'content' => "Updated Shared Memory [{$record['category']}: {$record['key']}]: {$record['content']}",
@@ -220,7 +278,7 @@ class ConcordHubService
                 'sender_user' => $participant->user_name,
                 'sender_device' => $participant->device_name,
                 'sender_kind' => $participant->provider,
-                'sender_icon' => '⚠️',
+                'sender_icon' => 'WARN',
                 'sender_color' => '#ffb300',
                 'model' => $participant->model,
                 'kind' => 'claim',
@@ -256,12 +314,12 @@ class ConcordHubService
             'sender_user' => $participant->user_name,
             'sender_device' => $participant->device_name,
             'sender_kind' => $participant->provider,
-            'sender_icon' => $participant->avatar ?: '🔒',
+            'sender_icon' => 'LOCK',
             'sender_color' => $participant->color ?: '#00e676',
             'model' => $participant->model,
             'kind' => 'claim',
             'local_changes' => array_map(fn ($f) => ['file' => $f, 'action' => 'claimed', 'device' => $participant->device_name], $files),
-            'content' => "Claimed files on {$participant->device_name}: ".implode(', ', $files).($reason ? " — {$reason}" : ''),
+            'content' => "Claimed files on {$participant->device_name}: ".implode(', ', $files).($reason ? " - {$reason}" : ''),
         ]);
 
         return ['ok' => true, 'conflicts' => [], 'claims' => $room->active_claims];
@@ -272,8 +330,11 @@ class ConcordHubService
         $senderName = trim($data['sender_name'] ?? 'Operator');
         $senderUser = trim($data['sender_user'] ?? $senderName);
         $senderDevice = trim($data['sender_device'] ?? 'Web Group Chat');
-        $text = trim($data['content'] ?? '');
-        $targetParticipantId = $data['target_participant_id'] ?? null;
+        $text = trim($data['content'] ?? $data['body'] ?? '');
+        $targetParticipantId = $data['target_participant_id'] ?? $data['target_agent'] ?? null;
+        if ($targetParticipantId === 'all') {
+            $targetParticipantId = null;
+        }
         $autoHandoff = (bool) ($data['auto_handoff'] ?? true);
 
         $room->messages()->create([
@@ -281,7 +342,7 @@ class ConcordHubService
             'sender_user' => $senderUser,
             'sender_device' => $senderDevice,
             'sender_kind' => 'human',
-            'sender_icon' => '👤',
+            'sender_icon' => 'USER',
             'sender_color' => '#ff5722',
             'kind' => 'prompt',
             'target_agent' => $targetParticipantId,
@@ -290,7 +351,7 @@ class ConcordHubService
 
         $room->update([
             'status' => 'collaborating',
-            'status_detail' => 'Agents communicating over VPS Shared Memory & queuing local device changes…',
+            'status_detail' => 'Agents communicating over VPS Shared Memory & queuing local device changes...',
         ]);
 
         RunConcordAgentTalk::dispatch($room, $text, $senderName, $targetParticipantId, $autoHandoff);
@@ -310,20 +371,20 @@ class ConcordHubService
         if ($agents->isEmpty()) {
             $room->update([
                 'status' => 'active',
-                'status_detail' => 'No connected agents in room — add an agent to start.',
+                'status_detail' => 'No connected agents in room - add an agent to start.',
             ]);
 
             return;
         }
 
         /** @var ConcordParticipant $primary */
-        $primary = ($targetParticipantId ? $agents->firstWhere('id', $targetParticipantId) : null) ?? $agents->first();
+        $primary = ($targetParticipantId
+            ? ($agents->firstWhere('id', $targetParticipantId) ?? $agents->firstWhere('name', $targetParticipantId))
+            : null) ?? $agents->first();
         $peers = $agents->where('id', '!=', $primary->id)->values();
 
-        // --- ROUND 1: Primary Agent (User 1's Agent) processes prompt, updates VPS shared memory, and queues local edits on User 1's computer ---
         $this->runSingleAgentStep($room, $primary, $prompt, $senderName, $peers->first());
 
-        // --- ROUND 2: If autoHandoff is enabled and there is at least one peer agent (User 2's Agent), Agent 1 talks to Agent 2 and Agent 2 queues local edits on User 2's computer ---
         if ($autoHandoff && $peers->isNotEmpty()) {
             $lastMsg = $room->messages()->where('participant_id', $primary->id)->latest('id')->first();
             $peerPrompt = $lastMsg
@@ -337,7 +398,7 @@ class ConcordHubService
 
         $room->update([
             'status' => 'active',
-            'status_detail' => 'Shared Memory synced · Local device change tasks queued for connected computers',
+            'status_detail' => 'Shared Memory synced - Local device change tasks queued for connected computers',
         ]);
     }
 
@@ -350,27 +411,28 @@ class ConcordHubService
         bool $isHandoffReply = false,
     ): void {
         $step1Thought = $isHandoffReply
-            ? "Receiving peer communication from {$fromSender} and reading VPS Shared Memory…"
-            : "Reading VPS Shared Memory and analyzing instruction from {$fromSender}…";
-        $step2Thought = "Planning local code edits for {$agent->user_name}'s computer ({$agent->device_name})…";
+            ? "Receiving peer communication from {$fromSender} and reading VPS Shared Memory..."
+            : "Reading VPS Shared Memory and analyzing instruction from {$fromSender}...";
+        $step2Thought = "Planning local code edits for {$agent->user_name}'s computer ({$agent->device_name})...";
         $step3Thought = $peerAgent && ! $isHandoffReply
-            ? "Preparing coordination message & contract handoff for {$peerAgent->name} ({$peerAgent->device_name})…"
-            : "Synchronizing local diff manifest & updating VPS Shared Memory…";
+            ? "Preparing coordination message & contract handoff for {$peerAgent->name} ({$peerAgent->device_name})..."
+            : 'Synchronizing local diff manifest & updating VPS Shared Memory...';
 
         $agent->update([
             'status' => 'thinking',
             'current_thought' => $step1Thought,
-            'current_action' => "Thinking on VPS Shared Context · Target device: {$agent->device_name}",
+            'current_action' => "Thinking on VPS Shared Context - Target device: {$agent->device_name}",
             'thinking_steps' => [$step1Thought, $step2Thought, $step3Thought],
             'last_seen_at' => now(),
         ]);
 
         $room->update([
             'status' => 'collaborating',
-            'status_detail' => "✻ {$agent->name} ({$agent->user_name}) is thinking: {$step1Thought}",
+            'status_detail' => "[THINKING] {$agent->name} ({$agent->user_name}) is reasoning: {$step1Thought}",
         ]);
 
         $memoryText = collect($room->fresh()->shared_memory ?? [])
+            ->filter(fn ($m) => is_array($m) && isset($m['key']))
             ->map(fn (array $m) => "- [{$m['category']}] {$m['key']}: {$m['content']} (by {$m['author_agent']})")
             ->implode("\n") ?: 'None yet.';
 
@@ -392,7 +454,7 @@ class ConcordHubService
             ."=== VPS SHARED MEMORY BANK ===\n{$memoryText}\n\n"
             ."=== RECENT GROUP CHAT CONTEXT ===\n{$recentChat}\n\n"
             ."=== INCOMING MESSAGE FROM {$fromSender} ===\n{$inputPrompt}\n\n"
-            ."Respond in the group chat. Include:\n"
+            ."Respond in the group chat without using any emojis. Include:\n"
             ."1. A brief 'THOUGHT:' line explaining your reasoning.\n"
             ."2. A 'LOCAL_FILES:' comma-separated list of 1-3 file paths you are editing on {$agent->device_name}.\n"
             ."3. A 'MEMORY_NOTE:' one-sentence contract/decision to store in the VPS Shared Memory.\n"
@@ -411,7 +473,6 @@ class ConcordHubService
             $step3Thought,
         ]));
 
-        // Update VPS Shared Memory with this agent's decision/contract
         if ($memoryNote !== '') {
             $this->upsertMemory($room, [
                 'key' => Str::slug($agent->user_name.'_'.$agent->name, '_').'_state',
@@ -422,7 +483,6 @@ class ConcordHubService
             ], postMessage: false);
         }
 
-        // Queue a Local Device Execution Task for this user's own computer!
         $localChanges = array_map(fn (string $file) => [
             'file' => $file,
             'action' => 'edit_on_local_device',
@@ -464,7 +524,7 @@ class ConcordHubService
             'sender_user' => $agent->user_name,
             'sender_device' => $agent->device_name,
             'sender_kind' => $agent->provider,
-            'sender_icon' => $agent->avatar ?: '✦',
+            'sender_icon' => 'AG',
             'sender_color' => $agent->color ?: '#ff5722',
             'model' => $usedModel,
             'kind' => $isHandoffReply ? 'handoff' : 'agent_talk',
@@ -478,7 +538,7 @@ class ConcordHubService
 
         $agent->update([
             'status' => 'idle',
-            'current_thought' => $thought ?: "Completed turn in {$elapsed}s — changes queued for {$agent->device_name}",
+            'current_thought' => $thought ?: "Completed turn in {$elapsed}s - changes queued for {$agent->device_name}",
             'current_action' => "Edited on {$agent->device_name}: ".implode(', ', $localFiles),
             'thinking_steps' => $thinkingTrace,
             'local_modified_files' => array_values(array_unique([...($agent->local_modified_files ?? []), ...$localFiles])),
@@ -537,7 +597,7 @@ class ConcordHubService
         return <<<BASH
 #!/usr/bin/env bash
 # ==============================================================================
-# CONCORD LOCAL DEVICE CONNECTOR — {$roomTitle}
+# CONCORD LOCAL DEVICE CONNECTOR - {$roomTitle}
 # Central Shared Memory & Group Chat: {$baseUrl}
 # File Edits & Agent Execution: THIS LOCAL COMPUTER (NOT THE VPS)
 # ==============================================================================
@@ -551,7 +611,7 @@ USER_NAME="\${CONCORD_USER:-\$(whoami)}"
 DEVICE_NAME="\${CONCORD_DEVICE:-\$(hostname)}"
 AGENT_CLI="\${CONCORD_AGENT:-claude}"
 
-echo "🔗 Connecting local computer [\${DEVICE_NAME}] (User: \${USER_NAME}) to Concord Room: {$roomTitle}..."
+echo "[CONNECT] Connecting local computer [\${DEVICE_NAME}] (User: \${USER_NAME}) to Concord Room: {$roomTitle}..."
 
 # 1. Configure Remote Concord MCP in current repository so local Claude Code / Antigravity / Cursor share VPS memory
 mkdir -p .agents .cursor
@@ -577,9 +637,9 @@ if [ -z "\${PARTICIPANT_ID}" ]; then
   PARTICIPANT_ID=\$(printf '%s' "\${REG_JSON}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('participant',{}).get('id',''))" 2>/dev/null || true)
 fi
 
-echo "✅ Registered on VPS Shared Memory Hub! Participant ID: \${PARTICIPANT_ID}"
-echo "📂 Local working directory: \$(pwd)"
-echo "⚡ Listening for group chat prompts & peer agent handoffs to execute locally on THIS computer..."
+echo "[OK] Registered on VPS Shared Memory Hub! Participant ID: \${PARTICIPANT_ID}"
+echo "[DIR] Local working directory: \$(pwd)"
+echo "[LISTEN] Listening for group chat prompts & peer agent handoffs to execute locally on THIS computer..."
 
 while true; do
   TASK_RESP=\$(curl -s "\${HUB_URL}/api/concord/shared/\${SHARE_TOKEN}/tasks/pull?participant_id=\${PARTICIPANT_ID}" || true)
@@ -587,11 +647,11 @@ while true; do
 
   if [ -n "\${TASK_ID}" ]; then
     INSTRUCTIONS=\$(printf '%s' "\${TASK_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin)['task']['instructions'])")
-    echo "📥 Received task #\${TASK_ID} from VPS Shared Memory! Executing locally on \${DEVICE_NAME}..."
+    echo "[PULL] Received task #\${TASK_ID} from VPS Shared Memory! Executing locally on \${DEVICE_NAME}..."
 
     curl -s -X POST "\${HUB_URL}/api/concord/shared/\${SHARE_TOKEN}/heartbeat" \\
       -H "Content-Type: application/json" \\
-      -d "{\\"participant_id\\":\\"\${PARTICIPANT_ID}\\",\\"status\\":\\"editing_local\\",\\"current_thought\\":\\"Executing changes locally on \${DEVICE_NAME}…\\",\\"current_action\\":\\"Running local \${AGENT_CLI} in \$(basename \$(pwd))\\"}" >/dev/null
+      -d "{\\"participant_id\\":\\"\${PARTICIPANT_ID}\\",\\"status\\":\\"editing_local\\",\\"current_thought\\":\\"Executing changes locally on \${DEVICE_NAME}...\\",\\"current_action\\":\\"Running local \${AGENT_CLI} in \$(basename \$(pwd))\\"}" >/dev/null
 
     if command -v "\${AGENT_CLI}" >/dev/null 2>&1; then
       "\${AGENT_CLI}" -p "\${INSTRUCTIONS}" || true
@@ -602,7 +662,7 @@ while true; do
       -H "Content-Type: application/json" \\
       -d "{\\"participant_id\\":\\"\${PARTICIPANT_ID}\\",\\"modified_files\\":\\"\${MODIFIED}\\",\\"summary\\":\\"Applied changes locally on \${DEVICE_NAME}\\"}" >/dev/null
 
-    echo "✅ Local edits completed on \${DEVICE_NAME} and synced to VPS Shared Memory!"
+    echo "[OK] Local edits completed on \${DEVICE_NAME} and synced to VPS Shared Memory!"
   fi
   sleep 2
 done

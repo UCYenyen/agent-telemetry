@@ -39,7 +39,7 @@ function DeployForm({ onClose }) {
             <div className="field">
                 <label className="check-label boxed">
                     <input type="checkbox" checked={useOpenRouter} onChange={(event) => setForm((current) => ({ ...current, agent: event.target.checked ? 'openrouter' : 'auto', model: '' }))} />
-                    <span>🌐 USE OPENROUTER API FOR THIS AGENT (TOGGLE)</span>
+                    <span>[OR] USE OPENROUTER API FOR THIS AGENT (TOGGLE)</span>
                 </label>
             </div>
             <div className="grid2">

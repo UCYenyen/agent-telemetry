@@ -49,14 +49,14 @@ export default function SessionCard({ session, onOpenConsole }) {
                     )}
                     {session.last_prompt && (
                         <span className="spec-chip" title={session.last_prompt}>
-                            ✻ {session.last_prompt.slice(0, 42)}{session.last_prompt.length > 42 ? '…' : ''}
+                            * {session.last_prompt.slice(0, 42)}{session.last_prompt.length > 42 ? '…' : ''}
                         </span>
                     )}
                 </div>
             </div>
             <div className="actions">
                 <button type="button" className="prompt-trigger" onClick={() => onOpenConsole(session.id)}>
-                    ✦ CLAUDE CODE PROMPT
+                    AI CLAUDE CODE PROMPT
                 </button>
                 {session.remote_url && (
                     <a href={session.remote_url} target="_blank" rel="noreferrer" className="btn ghost">
@@ -64,7 +64,7 @@ export default function SessionCard({ session, onOpenConsole }) {
                     </a>
                 )}
                 <button type="button" className="quiet" onClick={stop} title="Terminate session" aria-label="Terminate session">
-                    ✕
+                    X
                 </button>
             </div>
         </li>

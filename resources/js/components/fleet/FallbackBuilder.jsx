@@ -4,9 +4,9 @@ import { api } from '../../lib/api';
 import FallbackChainItem from './FallbackChainItem';
 
 const PROVIDER_GROUPS = [
-    { provider: 'openrouter', label: '🌐 OpenRouter API Models (Requires API Key)' },
-    { provider: 'antigravity', label: '✨ Google Antigravity CLI Models' },
-    { provider: 'claude', label: '⚡ Anthropic Claude CLI Models' },
+    { provider: 'openrouter', label: '[OR] OpenRouter API Models (Requires API Key)' },
+    { provider: 'antigravity', label: '[AGY] Google Antigravity CLI Models' },
+    { provider: 'claude', label: '[FAST] Anthropic Claude CLI Models' },
 ];
 
 export default function FallbackBuilder({ apiKey, onApiKeyChange }) {
@@ -31,7 +31,7 @@ export default function FallbackBuilder({ apiKey, onApiKeyChange }) {
     return (
         <div className="fb-builder-box">
             <div className="fb-builder-head">
-                <label htmlFor="fallback-model">➕ ADD FALLBACK MODEL (SELECT MODEL + PASTE API KEY)</label>
+                <label htmlFor="fallback-model">+ ADD FALLBACK MODEL (SELECT MODEL + PASTE API KEY)</label>
                 <button type="button" className="ghost btn-xs" onClick={syncModels}>
                     ↻ SYNC OPENROUTER MODELS
                 </button>

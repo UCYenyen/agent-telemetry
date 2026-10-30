@@ -3,21 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Models\ConcordLocalTask;
-use App\Models\ConcordMessage;
-use App\Models\ConcordParticipant;
 use App\Models\ConcordRoom;
 use App\Models\ConcordRoomInvite;
 use App\Services\ConcordHubService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Str;
 
 class ConcordSharedController extends Controller
 {
-    public function show(Request $request, string $token, ConcordHubService $hub): JsonResponse
+    public function show(Request $request, string $token): JsonResponse
     {
-        [$room, $invite, $permission, $viewerEmail] = $this->resolveRoomAccess($request, $token);
+        [$room, $invite, $permission, $projectRole, $bypassedByLink, $viewerEmail] = $this->resolveRoomAccess($request, $token);
         if (! $room) {
             return response()->json([
                 'message' => 'Shared room or invite link not found.',
@@ -29,7 +26,8 @@ class ConcordSharedController extends Controller
                 'requires_email' => true,
                 'title' => $room->title,
                 'access_mode' => $room->access_mode,
-                'message' => 'This group chat room is invite-only. Enter your invited email address to join.',
+                'roles_catalog' => ConcordHubService::rolesCatalog(),
+                'message' => 'This group chat project is restricted (invite-only). Enter your invited email address to join.',
             ], 403);
         }
 
@@ -37,69 +35,73 @@ class ConcordSharedController extends Controller
             $invite->update(['accepted_at' => now()]);
         }
 
-        return response()->json($this->formatSharedRoom($room, $permission, $viewerEmail, $invite, $request->getSchemeAndHttpHost()));
+        return response()->json($this->formatSharedRoom($room, $permission, $projectRole, $bypassedByLink, $viewerEmail, $invite, $request));
     }
 
     public function storeMessage(Request $request, string $token, ConcordHubService $hub): JsonResponse
     {
-        [$room, $invite, $permission, $viewerEmail] = $this->resolveRoomAccess($request, $token);
+        [$room, $invite, $permission, $projectRole, $bypassedByLink, $viewerEmail] = $this->resolveRoomAccess($request, $token);
         if (! $room) {
             return response()->json(['message' => 'Room not found.'], 404);
         }
 
         if ($permission !== 'edit') {
             return response()->json([
-                'message' => 'You have view-only access to this room. Ask the room owner for editor permission to send prompts or queue local edits.',
+                'message' => 'Your project role is no_role (view-only). Only admin or team_member can send prompts or queue local edits unless Anyone with link can edit is enabled.',
             ], 403);
         }
 
         $validated = $request->validate([
-            'body' => ['required', 'string', 'max:12000'],
+            'body' => ['nullable', 'string', 'max:12000'],
+            'content' => ['nullable', 'string', 'max:12000'],
             'sender_name' => ['nullable', 'string', 'max:120'],
             'sender_email' => ['nullable', 'string', 'max:190'],
             'sender_device' => ['nullable', 'string', 'max:160'],
             'target_agent' => ['nullable', 'string', 'max:120'],
-            'participant_id' => ['nullable', 'integer'],
+            'target_participant_id' => ['nullable', 'string', 'max:120'],
+            'participant_id' => ['nullable', 'string'],
         ]);
 
-        if (empty($validated['sender_email']) && $viewerEmail) {
-            $validated['sender_email'] = $viewerEmail;
+        $text = trim((string) ($validated['content'] ?? $validated['body'] ?? ''));
+        if ($text === '') {
+            return response()->json(['message' => 'Prompt content is required.'], 422);
         }
 
         if (! empty($validated['participant_id'])) {
             $participant = $room->participants()->whereKey($validated['participant_id'])->first();
             if ($participant) {
                 $validated['sender_name'] = $validated['sender_name'] ?? $participant->user_name;
-                $validated['sender_email'] = $validated['sender_email'] ?? $participant->account_email;
                 $validated['sender_device'] = $validated['sender_device'] ?? $participant->device_name;
             }
         }
 
+        $validated['content'] = $text;
         $hub->sendPrompt($room, $validated);
 
-        return response()->json($this->formatSharedRoom($room->fresh(), $permission, $viewerEmail, $invite, $request->getSchemeAndHttpHost()));
+        return response()->json($this->formatSharedRoom($room->fresh(), $permission, $projectRole, $bypassedByLink, $viewerEmail, $invite, $request));
     }
 
     public function registerDevice(Request $request, string $token): JsonResponse
     {
-        [$room, $invite, $permission, $viewerEmail] = $this->resolveRoomAccess($request, $token);
+        [$room, $invite, $permission, $projectRole, $bypassedByLink, $viewerEmail] = $this->resolveRoomAccess($request, $token);
         if (! $room) {
             return response()->json(['message' => 'Room not found.'], 404);
         }
 
-        if ($permission === 'forbidden') {
+        if ($permission !== 'edit') {
             return response()->json([
-                'requires_email' => true,
-                'message' => 'Invite-only room: provide an invited email address to register your local computer.',
+                'requires_email' => $permission === 'forbidden',
+                'message' => 'Only admin or team_member (or projects with Anyone with link can edit enabled) can connect a local computer to execute edits.',
             ], 403);
         }
 
         $validated = $request->validate([
-            'participant_id' => ['nullable', 'integer'],
+            'participant_id' => ['nullable', 'string'],
             'user_name' => ['required', 'string', 'max:120'],
             'account_email' => ['nullable', 'string', 'max:190'],
             'device_name' => ['required', 'string', 'max:160'],
             'agent_name' => ['nullable', 'string', 'max:120'],
+            'name' => ['nullable', 'string', 'max:120'],
             'provider' => ['nullable', 'string', 'max:60'],
             'model' => ['nullable', 'string', 'max:120'],
             'role_title' => ['nullable', 'string', 'max:160'],
@@ -121,62 +123,63 @@ class ConcordSharedController extends Controller
 
         $colors = ['#10b981', '#6366f1', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6'];
         $provider = $validated['provider'] ?? 'claude';
-        $agentName = $validated['agent_name'] ?? ($validated['user_name'].'\'s '.ucfirst($provider).' Agent');
+        $agentName = $validated['agent_name'] ?? $validated['name'] ?? ($validated['user_name'].' '.ucfirst($provider).' Agent');
 
         if ($participant) {
             $participant->update([
                 'user_name' => $validated['user_name'],
                 'account_email' => $email ?: $participant->account_email,
                 'device_name' => $validated['device_name'],
-                'agent_name' => $agentName,
+                'name' => $agentName,
                 'provider' => $provider,
                 'model' => $validated['model'] ?? $participant->model,
-                'role_title' => $validated['role_title'] ?? $participant->role_title,
-                'connection_mode' => 'local_connector',
+                'role_prompt' => $validated['role_title'] ?? $participant->role_prompt,
                 'status' => 'idle',
                 'current_action' => 'Connected from local computer ('.$validated['device_name'].')',
                 'last_seen_at' => now(),
             ]);
         } else {
             $participant = $room->participants()->create([
+                'kind' => 'agent',
+                'name' => $agentName,
                 'user_name' => $validated['user_name'],
                 'account_email' => $email ?: ($validated['user_name'].'@local.dev'),
                 'device_name' => $validated['device_name'],
-                'agent_name' => $agentName,
+                'execution_mode' => 'local_device',
                 'provider' => $provider,
-                'model' => $validated['model'] ?? 'claude-opus-4-6',
-                'role_title' => $validated['role_title'] ?? 'Local Workspace Agent',
-                'avatar_color' => $colors[$room->participants()->count() % count($colors)],
-                'connection_mode' => 'local_connector',
-                'permission' => $permission === 'edit' ? 'editor' : 'viewer',
+                'model' => $validated['model'] ?? 'claude-sonnet-5-5-high',
+                'avatar' => 'AG',
+                'color' => $colors[$room->participants()->count() % count($colors)],
+                'role_prompt' => $validated['role_title'] ?? 'Local Workspace Agent',
                 'status' => 'idle',
                 'current_thought' => 'Connected to VPS shared memory bank from '.$validated['device_name'].'. Waiting for group chat prompts or peer handoffs.',
                 'current_action' => 'Connected from local computer ('.$validated['device_name'].')',
                 'thinking_steps' => [
-                    'Linked local workspace on '.$validated['device_name'].' to VPS room '.$room->slug,
+                    'Linked local workspace on '.$validated['device_name'].' to VPS room '.$room->title,
                     'Synced shared memory bank and active cross-device file claims',
                 ],
+                'claimed_files' => [],
                 'local_modified_files' => [],
-                'device_token' => 'dev_'.Str::random(24),
                 'last_seen_at' => now(),
             ]);
 
             $room->messages()->create([
                 'participant_id' => $participant->id,
-                'sender_type' => 'system',
-                'sender_name' => $participant->agent_name,
-                'sender_email' => $participant->account_email,
+                'sender_name' => $participant->name,
+                'sender_user' => $participant->user_name,
                 'sender_device' => $participant->device_name,
-                'provider' => $participant->provider,
+                'sender_kind' => 'system',
+                'sender_icon' => 'SYS',
+                'sender_color' => '#10b981',
                 'model' => $participant->model,
-                'kind' => 'memory_sync',
-                'body' => "**{$participant->user_name}** connected local computer `{$participant->device_name}` running **{$participant->agent_name}** (`{$participant->model}`). All prompts and file edits for {$participant->user_name} will execute directly on `{$participant->device_name}` while syncing context memory on this VPS.",
+                'kind' => 'memory_update',
+                'content' => "{$participant->user_name} connected local computer {$participant->device_name} running {$participant->name} ({$participant->model}). All prompts and file edits for {$participant->user_name} will execute directly on {$participant->device_name} while syncing context memory on this VPS.",
             ]);
         }
 
         return response()->json([
             'participant' => $participant->fresh(),
-            'room' => $this->formatSharedRoom($room->fresh(), $permission, $email ?: $viewerEmail, $invite, $request->getSchemeAndHttpHost()),
+            'room' => $this->formatSharedRoom($room->fresh(), $permission, $projectRole, $bypassedByLink, $email ?: $viewerEmail, $invite, $request),
         ]);
     }
 
@@ -188,7 +191,7 @@ class ConcordSharedController extends Controller
         }
 
         $validated = $request->validate([
-            'participant_id' => ['nullable', 'integer'],
+            'participant_id' => ['nullable', 'string'],
             'device_name' => ['nullable', 'string', 'max:160'],
             'status' => ['nullable', 'string', 'max:40'],
             'current_thought' => ['nullable', 'string', 'max:2000'],
@@ -236,9 +239,9 @@ class ConcordSharedController extends Controller
         $participantId = $request->query('participant_id');
         $deviceName = $request->query('device_name');
 
-        $query = $room->localTasks()->where('status', 'queued')->oldest('id');
+        $query = $room->localTasks()->where('status', 'queued')->oldest('created_at');
         if ($participantId) {
-            $query->where('target_participant_id', (int) $participantId);
+            $query->where('target_participant_id', $participantId);
         } elseif ($deviceName) {
             $query->where('target_device', $deviceName);
         }
@@ -249,8 +252,8 @@ class ConcordSharedController extends Controller
                 'status' => 'executing_on_device',
             ]);
 
-            if ($task->targetParticipant) {
-                $task->targetParticipant->update([
+            if ($task->participant) {
+                $task->participant->update([
                     'status' => 'editing_local',
                     'current_thought' => 'Executing local file edits on '.$task->target_device.' from VPS shared memory...',
                     'current_action' => 'Applying local workspace edits on '.$task->target_device,
@@ -269,27 +272,33 @@ class ConcordSharedController extends Controller
     public function completeTask(Request $request, string $token, ConcordLocalTask $task): JsonResponse
     {
         $room = $this->findRoomByToken($token);
-        if (! $room || $task->room_id !== $room->id) {
+        if (! $room || $task->concord_room_id !== $room->id) {
             return response()->json(['message' => 'Task not found in this room.'], 404);
         }
 
         $validated = $request->validate([
             'status' => ['nullable', 'string', 'in:completed,failed'],
-            'modified_files' => ['nullable', 'array'],
+            'modified_files' => ['nullable'],
             'result_summary' => ['nullable', 'string', 'max:4000'],
+            'summary' => ['nullable', 'string', 'max:4000'],
         ]);
 
-        $modifiedFiles = $validated['modified_files'] ?? $task->modified_files ?? [];
-        $summary = $validated['result_summary'] ?? ('Applied local workspace changes on '.$task->target_device.'.');
+        $rawFiles = $validated['modified_files'] ?? $task->modified_files ?? [];
+        if (is_string($rawFiles)) {
+            $modifiedFiles = array_values(array_filter(array_map('trim', explode(',', $rawFiles))));
+        } else {
+            $modifiedFiles = is_array($rawFiles) ? $rawFiles : [];
+        }
+
+        $summary = $validated['result_summary'] ?? $validated['summary'] ?? ('Applied local workspace changes on '.$task->target_device.'.');
 
         $task->update([
             'status' => $validated['status'] ?? 'completed',
             'modified_files' => $modifiedFiles,
             'result_summary' => $summary,
-            'executed_at' => now(),
         ]);
 
-        $participant = $task->targetParticipant;
+        $participant = $task->participant;
         if ($participant) {
             $participant->update([
                 'status' => 'idle',
@@ -302,32 +311,29 @@ class ConcordSharedController extends Controller
 
         $room->messages()->create([
             'participant_id' => $participant?->id,
-            'sender_type' => 'agent',
-            'sender_name' => $participant?->agent_name ?? ($task->target_user_name.' Local Agent'),
-            'sender_email' => $participant?->account_email,
+            'sender_name' => $participant?->name ?? ($task->target_agent_name ?: 'Local Agent'),
+            'sender_user' => $participant?->user_name ?? 'Local User',
             'sender_device' => $task->target_device,
-            'provider' => $participant?->provider ?? 'claude',
+            'sender_kind' => $participant?->provider ?? 'claude',
+            'sender_icon' => 'EDIT',
+            'sender_color' => '#10b981',
             'model' => $participant?->model ?? 'local-agent',
             'kind' => 'local_edit',
-            'thinking_summary' => 'Executed queued task on local machine '.$task->target_device,
-            'thinking_steps' => [
-                'Pulled task #'.$task->id.' from VPS Shared Memory Hub',
-                'Modified '.count($modifiedFiles).' file(s) directly on '.$task->target_device,
-                'Synced completion receipt back to group chat',
-            ],
+            'thinking_text' => "Pulled task #{$task->id} from VPS Shared Memory Hub\nModified ".count($modifiedFiles)." file(s) directly on {$task->target_device}\nSynced completion receipt back to group chat",
             'tool_calls' => [
                 [
                     'tool' => 'LocalWorkspaceApply',
-                    'summary' => $task->target_device.' → '.implode(', ', $modifiedFiles),
+                    'target' => $task->target_device.' -> '.implode(', ', $modifiedFiles),
                     'output' => $summary,
                 ],
             ],
-            'local_changes' => [
-                'executed_on_device' => $task->target_device,
-                'owner' => $task->target_user_name,
-                'files' => $modifiedFiles,
-            ],
-            'body' => "✅ **Local Computer Edits Applied on `{$task->target_device}`** ({$task->target_user_name}):\n\n{$summary}",
+            'local_changes' => array_map(fn ($f) => [
+                'file' => $f,
+                'action' => 'applied_on_local_device',
+                'device' => $task->target_device,
+                'user' => $participant?->user_name ?? $task->target_agent_name,
+            ], $modifiedFiles),
+            'content' => "[LOCAL EDITS APPLIED ON {$task->target_device}]: {$summary}",
         ]);
 
         return response()->json([
@@ -342,7 +348,7 @@ class ConcordSharedController extends Controller
             return response("# Error: Concord Room not found.\n", 404, ['Content-Type' => 'text/plain']);
         }
 
-        $participantId = $request->query('participant_id') ? (int) $request->query('participant_id') : null;
+        $participantId = $request->query('participant_id') ? (string) $request->query('participant_id') : null;
         $script = $hub->generateConnectorScript($room, $request->getSchemeAndHttpHost(), $participantId);
 
         return response($script, 200, [
@@ -400,12 +406,12 @@ class ConcordSharedController extends Controller
                             'inputSchema' => [
                                 'type' => 'object',
                                 'properties' => [
-                                    'section' => ['type' => 'string', 'enum' => ['architecture', 'contracts', 'decisions']],
                                     'key' => ['type' => 'string'],
-                                    'value' => ['type' => 'string'],
+                                    'category' => ['type' => 'string'],
+                                    'content' => ['type' => 'string'],
                                     'author' => ['type' => 'string'],
                                 ],
-                                'required' => ['section', 'value'],
+                                'required' => ['content'],
                             ],
                         ],
                         [
@@ -428,7 +434,7 @@ class ConcordSharedController extends Controller
                             'inputSchema' => [
                                 'type' => 'object',
                                 'properties' => [
-                                    'participant_id' => ['type' => 'integer'],
+                                    'participant_id' => ['type' => 'string'],
                                     'status' => ['type' => 'string'],
                                     'current_thought' => ['type' => 'string'],
                                     'current_action' => ['type' => 'string'],
@@ -443,7 +449,7 @@ class ConcordSharedController extends Controller
                             'inputSchema' => [
                                 'type' => 'object',
                                 'properties' => [
-                                    'participant_id' => ['type' => 'integer'],
+                                    'participant_id' => ['type' => 'string'],
                                     'device_name' => ['type' => 'string'],
                                 ],
                             ],
@@ -468,8 +474,8 @@ class ConcordSharedController extends Controller
                                 'room' => $room->title,
                                 'shared_memory' => $room->shared_memory,
                                 'active_claims' => $room->active_claims,
-                                'participants' => $room->participants()->get(['id', 'user_name', 'device_name', 'agent_name', 'model', 'status', 'current_thought']),
-                                'recent_messages' => $room->messages()->latest('id')->limit(10)->get(['sender_name', 'sender_device', 'kind', 'body']),
+                                'participants' => $room->participants()->get(['id', 'user_name', 'device_name', 'name', 'model', 'status', 'current_thought']),
+                                'recent_messages' => $room->messages()->latest('id')->limit(10)->get(['sender_name', 'sender_device', 'kind', 'content']),
                             ], JSON_PRETTY_PRINT),
                         ]],
                     ],
@@ -477,41 +483,36 @@ class ConcordSharedController extends Controller
             }
 
             if ($toolName === 'write_shared_memory') {
-                $memory = $room->shared_memory ?? ['architecture' => [], 'contracts' => [], 'decisions' => []];
-                $section = $args['section'] ?? 'decisions';
-                if ($section === 'decisions') {
-                    $memory['decisions'][] = [
-                        'author' => $args['author'] ?? 'Remote MCP Agent',
-                        'summary' => $args['value'] ?? '',
-                        'timestamp' => now()->toIso8601String(),
-                    ];
-                } else {
-                    $memory[$section][$args['key'] ?? 'item'] = $args['value'] ?? '';
-                }
-                $room->update(['shared_memory' => $memory]);
+                $record = $hub->upsertMemory($room, [
+                    'key' => $args['key'] ?? 'mcp_note',
+                    'category' => $args['category'] ?? 'decision',
+                    'content' => $args['content'] ?? $args['value'] ?? '',
+                    'author_agent' => $args['author'] ?? 'Remote MCP Agent',
+                    'author_user' => $args['author'] ?? 'Remote MCP User',
+                ]);
 
                 return response()->json([
                     'jsonrpc' => '2.0',
                     'id' => $id,
                     'result' => [
-                        'content' => [['type' => 'text', 'text' => 'Updated VPS shared memory section: '.$section]],
+                        'content' => [['type' => 'text', 'text' => 'Updated VPS shared memory key: '.$record['key']]],
                     ],
                 ]);
             }
 
             if ($toolName === 'send_group_message') {
-                $msg = $hub->sendPrompt($room, [
+                $hub->sendPrompt($room, [
                     'sender_name' => $args['sender_name'] ?? 'Remote MCP Agent',
                     'sender_device' => $args['sender_device'] ?? 'Local Computer via MCP',
                     'target_agent' => $args['target_agent'] ?? 'all',
-                    'body' => $args['body'] ?? '',
+                    'content' => $args['body'] ?? $args['content'] ?? '',
                 ]);
 
                 return response()->json([
                     'jsonrpc' => '2.0',
                     'id' => $id,
                     'result' => [
-                        'content' => [['type' => 'text', 'text' => 'Posted group chat message #'.$msg->id]],
+                        'content' => [['type' => 'text', 'text' => 'Posted group chat message and triggered agent coordination.']],
                     ],
                 ]);
             }
@@ -546,7 +547,7 @@ class ConcordSharedController extends Controller
                     ->where('status', 'queued')
                     ->when(! empty($args['participant_id']), fn ($q) => $q->where('target_participant_id', $args['participant_id']))
                     ->when(! empty($args['device_name']), fn ($q) => $q->where('target_device', $args['device_name']))
-                    ->oldest('id')
+                    ->oldest('created_at')
                     ->first();
 
                 return response()->json([
@@ -567,7 +568,7 @@ class ConcordSharedController extends Controller
     }
 
     /**
-     * @return array{0: ?ConcordRoom, 1: ?ConcordRoomInvite, 2: string, 3: ?string}
+     * @return array{0: ?ConcordRoom, 1: ?ConcordRoomInvite, 2: string, 3: string, 4: bool, 5: ?string}
      */
     protected function resolveRoomAccess(Request $request, string $token): array
     {
@@ -575,41 +576,72 @@ class ConcordSharedController extends Controller
         $room = $invite ? $invite->room : ConcordRoom::query()->where('share_token', $token)->first();
 
         if (! $room) {
-            return [null, null, 'forbidden', null];
+            return [null, null, 'forbidden', 'no_role', false, null];
         }
 
-        $isAdmin = (bool) $request->session()->get('agent_host.authenticated', false);
-        $viewerEmail = strtolower(trim((string) ($request->query('email') ?? $request->input('sender_email') ?? $request->header('X-Invite-Email') ?? '')));
+        $isAuthenticated = (bool) $request->session()->get('agent_host.authenticated', false);
+        $sessionUser = $request->session()->get('agent_host.user');
+        $globalRole = $isAuthenticated
+            ? (is_array($sessionUser) ? ($sessionUser['role'] ?? 'admin') : 'admin')
+            : 'no_role';
 
+        $viewerEmail = strtolower(trim((string) (
+            $request->query('email')
+            ?? $request->input('sender_email')
+            ?? $request->header('X-Invite-Email')
+            ?? ($sessionUser['email'] ?? '')
+        )));
+
+        // 1. Admin always has full edit & project management access
+        if ($globalRole === 'admin') {
+            return [$room, $invite, 'edit', 'admin', false, $viewerEmail ?: $room->owner_email];
+        }
+
+        // 2. If room is set to "Anyone with the link can edit" (link_edit), role check is bypassed!
+        if ($room->access_mode === 'link_edit') {
+            return [$room, $invite, 'edit', 'team_member', true, $viewerEmail ?: ($invite?->email)];
+        }
+
+        // 3. Otherwise (invite_only or link_view), check per-project role in invites
         if ($invite) {
-            return [$room, $invite, $invite->role === 'editor' ? 'edit' : 'view', $invite->email];
-        }
+            $isTeamMember = in_array($invite->role, ['team_member', 'editor', 'admin'], true);
 
-        if ($isAdmin) {
-            return [$room, null, 'edit', $viewerEmail ?: $room->owner_email];
+            return [
+                $room,
+                $invite,
+                $isTeamMember ? 'edit' : 'view',
+                $isTeamMember ? 'team_member' : 'no_role',
+                false,
+                $invite->email,
+            ];
         }
 
         if ($viewerEmail !== '') {
             if (strtolower((string) $room->owner_email) === $viewerEmail) {
-                return [$room, null, 'edit', $viewerEmail];
+                return [$room, null, 'edit', 'admin', false, $viewerEmail];
             }
             $matchedInvite = $room->invites()
                 ->whereRaw('LOWER(email) = ?', [$viewerEmail])
                 ->first();
             if ($matchedInvite) {
-                return [$room, $matchedInvite, $matchedInvite->role === 'editor' ? 'edit' : 'view', $viewerEmail];
+                $isTeamMember = in_array($matchedInvite->role, ['team_member', 'editor', 'admin'], true);
+
+                return [
+                    $room,
+                    $matchedInvite,
+                    $isTeamMember ? 'edit' : 'view',
+                    $isTeamMember ? 'team_member' : 'no_role',
+                    false,
+                    $viewerEmail,
+                ];
             }
         }
 
-        if ($room->access_mode === 'link_edit') {
-            return [$room, null, 'edit', $viewerEmail ?: null];
-        }
-
         if ($room->access_mode === 'link_view') {
-            return [$room, null, 'view', $viewerEmail ?: null];
+            return [$room, null, 'view', 'no_role', false, $viewerEmail ?: null];
         }
 
-        return [$room, null, 'forbidden', $viewerEmail ?: null];
+        return [$room, null, 'forbidden', 'no_role', false, $viewerEmail ?: null];
     }
 
     protected function findRoomByToken(string $token): ?ConcordRoom
@@ -625,37 +657,50 @@ class ConcordSharedController extends Controller
     protected function formatSharedRoom(
         ConcordRoom $room,
         string $permission,
+        string $projectRole,
+        bool $bypassedByLink,
         ?string $viewerEmail,
         ?ConcordRoomInvite $invite,
-        string $baseUrl
+        Request $request
     ): array {
+        $isAuthenticated = (bool) $request->session()->get('agent_host.authenticated', false);
+        $sessionUser = $request->session()->get('agent_host.user');
+        $globalRole = $isAuthenticated
+            ? (is_array($sessionUser) ? ($sessionUser['role'] ?? 'admin') : 'admin')
+            : 'no_role';
+
         $room->load([
-            'participants',
-            'invites',
-            'messages' => fn ($query) => $query->latest('id')->limit(120),
-            'localTasks' => fn ($query) => $query->latest('id')->limit(40),
+            'participants' => fn ($q) => $q->orderBy('created_at'),
+            'invites' => fn ($q) => $q->orderBy('created_at'),
+            'messages' => fn ($q) => $q->latest('id')->limit(120),
+            'localTasks' => fn ($q) => $q->latest('created_at')->limit(40),
         ]);
+
+        $baseUrl = rtrim($request->getSchemeAndHttpHost(), '/');
 
         return [
             'id' => $room->id,
-            'name' => $room->name,
-            'slug' => $room->slug,
             'title' => $room->title,
             'description' => $room->description,
-            'owner_name' => $room->owner_name,
             'owner_email' => $room->owner_email,
             'access_mode' => $room->access_mode,
             'permission' => $permission,
+            'project_role' => $projectRole,
+            'global_role' => $globalRole,
+            'can_manage_room' => $globalRole === 'admin',
+            'role_bypassed_by_link' => $bypassedByLink,
+            'roles_catalog' => ConcordHubService::rolesCatalog(),
             'viewer_email' => $viewerEmail,
             'invite' => $invite,
             'share_token' => $room->share_token,
             'mcp_token' => $room->mcp_token,
-            'share_url' => rtrim($baseUrl, '/').'/?room='.$room->share_token,
-            'mcp_endpoint' => rtrim($baseUrl, '/').'/api/concord/mcp/'.$room->mcp_token,
-            'connect_command' => 'curl -fsSL '.rtrim($baseUrl, '/').'/connect/'.$room->share_token.' | bash',
+            'share_url' => $baseUrl.'/?room='.$room->share_token,
+            'mcp_endpoint' => $baseUrl.'/api/concord/mcp/'.$room->mcp_token,
+            'connect_command' => 'curl -fsSL '.$baseUrl.'/connect/'.$room->share_token.' | bash',
             'shared_memory' => $room->shared_memory ?? [],
             'active_claims' => $room->active_claims ?? [],
             'status' => $room->status,
+            'status_detail' => $room->status_detail,
             'participants' => $room->participants->values(),
             'invites' => $room->invites->values(),
             'messages' => $room->messages->reverse()->values(),

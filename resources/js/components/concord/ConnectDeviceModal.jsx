@@ -4,12 +4,12 @@ import { useApp } from '../../context/AppContext';
 
 export default function ConnectDeviceModal({ open, room, activeToken, onClose, onConnected }) {
     const { toast } = useApp();
-    const [userName, setUserName] = useState('User 2 (Partner)');
+    const [userName, setUserName] = useState('User 2 (Collaborator)');
     const [accountEmail, setAccountEmail] = useState('partner@account.dev');
     const [deviceName, setDeviceName] = useState('Partner-Laptop (Local)');
     const [agentName, setAgentName] = useState('Partner Local Agent');
     const [provider, setProvider] = useState('claude');
-    const [model, setModel] = useState('claude-opus-4-6');
+    const [model, setModel] = useState('claude-sonnet-5-5-high');
     const [roleTitle, setRoleTitle] = useState('Full-Stack & Local Workspace Lead');
     const [submitting, setSubmitting] = useState(false);
     const [selectedParticipantId, setSelectedParticipantId] = useState(room?.participants?.[0]?.id ?? '');
@@ -50,12 +50,13 @@ export default function ConnectDeviceModal({ open, room, activeToken, onClose, o
                 account_email: accountEmail,
                 device_name: deviceName,
                 agent_name: agentName,
+                name: agentName,
                 provider,
                 model,
                 role_title: roleTitle,
             });
             setSelectedParticipantId(res.participant.id);
-            toast(`Connected ${res.participant.device_name} (${res.participant.agent_name}) to VPS Shared Memory!`);
+            toast(`Connected ${res.participant.device_name} (${res.participant.name || res.participant.agent_name}) to VPS Shared Memory!`);
             onConnected?.(res.participant);
         } catch (err) {
             toast(err.message);
@@ -72,15 +73,15 @@ export default function ConnectDeviceModal({ open, room, activeToken, onClose, o
                         <div className="concord-modal-kicker">VPS SHARED MEMORY + LOCAL COMPUTER EXECUTION</div>
                         <h3 className="concord-modal-title">Connect Your Local Computer & AI Agent</h3>
                     </div>
-                    <button type="button" className="btn" onClick={onClose}>✕ Close</button>
+                    <button type="button" className="btn" onClick={onClose}>Close</button>
                 </div>
 
                 <div className="concord-connect-architecture">
                     <div className="concord-arch-pill">
-                        <strong>🧠 On This VPS ({window.location.hostname}):</strong> Shared Context Memory, Context Window, File Locks, & Multi-Agent Group Chat
+                        <strong>ON THIS VPS ({window.location.hostname}):</strong> Shared Context Memory, Context Window, File Locks, & Multi-Agent Group Chat
                     </div>
                     <div className="concord-arch-pill emerald">
-                        <strong>💻 On Each User’s Computer:</strong> Local Agent Prompting & Real Workspace File Edits (User 1’s agent edits User 1’s computer; User 2’s agent edits User 2’s computer)
+                        <strong>ON EACH USER COMPUTER:</strong> Local Agent Prompting & Real Workspace File Edits (User 1 agent edits User 1 computer; User 2 agent edits User 2 computer)
                     </div>
                 </div>
 
@@ -123,7 +124,7 @@ export default function ConnectDeviceModal({ open, room, activeToken, onClose, o
                             <input className="input" value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} />
                         </label>
                         <button type="submit" className="btn btn-emerald" style={{ marginTop: '0.85rem', width: '100%' }} disabled={submitting}>
-                            ⚡ 1-Button Connect Local Computer to Group Chat
+                            1-Button Connect Local Computer to Group Chat
                         </button>
                     </form>
 
@@ -139,7 +140,7 @@ export default function ConnectDeviceModal({ open, room, activeToken, onClose, o
                             >
                                 {(room.participants || []).map((p) => (
                                     <option key={p.id} value={p.id}>
-                                        {p.user_name} — {p.device_name} ({p.agent_name})
+                                        {p.user_name} - {p.device_name} ({p.name || p.agent_name})
                                     </option>
                                 ))}
                             </select>

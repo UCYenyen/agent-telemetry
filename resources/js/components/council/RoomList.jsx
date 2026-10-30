@@ -2,7 +2,7 @@ import { isRunning } from '../../lib/council';
 import PanelHeader from '../common/PanelHeader';
 
 function roomMeta(room) {
-    const status = isRunning(room) ? `⚡ ${room.status.replace(/_/g, ' ').toUpperCase()}` : room.status === 'interrupted' ? '⚠️ INTERRUPTED' : '✓ VERDICT READY';
+    const status = isRunning(room) ? `[FAST] ${room.status.replace(/_/g, ' ').toUpperCase()}` : room.status === 'interrupted' ? '[WARN] INTERRUPTED' : 'OK VERDICT READY';
 
     return `${status} · ${room.messages_count} entries`;
 }
@@ -37,7 +37,7 @@ export default function RoomList({ rooms, activeId, onSelect, onNew, onDelete })
                             title="Delete room"
                             aria-label="Delete room"
                         >
-                            ✕
+                            X
                         </button>
                     </li>
                 ))}

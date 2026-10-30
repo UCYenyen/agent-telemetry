@@ -13,6 +13,7 @@ use App\Http\Controllers\OpenRouterModelController;
 use App\Http\Controllers\SessionMessageController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StateController;
+use App\Http\Middleware\RequireAdmin;
 use App\Http\Middleware\RequirePassword;
 use Illuminate\Support\Facades\Route;
 
@@ -40,29 +41,34 @@ Route::middleware(RequirePassword::class)->group(function () {
     Route::prefix('api')->group(function () {
         Route::get('state', StateController::class);
 
-        Route::apiResource('sessions', AgentSessionController::class)
-            ->only(['store', 'show', 'update', 'destroy'])
-            ->parameters(['sessions' => 'agentSession']);
-        Route::post('sessions/{agentSession}/messages', [SessionMessageController::class, 'store']);
-        Route::delete('sessions/{agentSession}/messages', [SessionMessageController::class, 'destroy']);
+        // Admin-only routes: Live VPS Claude / Antigravity Fleet Sessions, Failover Settings, and Council
+        Route::middleware(RequireAdmin::class)->group(function () {
+            Route::apiResource('sessions', AgentSessionController::class)
+                ->only(['store', 'show', 'update', 'destroy'])
+                ->parameters(['sessions' => 'agentSession']);
+            Route::post('sessions/{agentSession}/messages', [SessionMessageController::class, 'store']);
+            Route::delete('sessions/{agentSession}/messages', [SessionMessageController::class, 'destroy']);
 
-        Route::patch('settings', [SettingsController::class, 'update']);
-        Route::post('openrouter/models', [OpenRouterModelController::class, 'store']);
-        Route::apiResource('fallbacks', FallbackController::class)->only(['store', 'update', 'destroy']);
+            Route::patch('settings', [SettingsController::class, 'update']);
+            Route::post('openrouter/models', [OpenRouterModelController::class, 'store']);
+            Route::apiResource('fallbacks', FallbackController::class)->only(['store', 'update', 'destroy']);
 
-        Route::post('advisors/reset', [AdvisorController::class, 'reset']);
-        Route::apiResource('advisors', AdvisorController::class)->only(['store', 'update', 'destroy']);
-        Route::patch('council/settings', [CouncilSettingsController::class, 'update']);
-        Route::apiResource('council/rooms', CouncilRoomController::class)
-            ->only(['store', 'show', 'destroy'])
-            ->parameters(['rooms' => 'councilRoom']);
+            Route::post('advisors/reset', [AdvisorController::class, 'reset']);
+            Route::apiResource('advisors', AdvisorController::class)->only(['store', 'update', 'destroy']);
+            Route::patch('council/settings', [CouncilSettingsController::class, 'update']);
+            Route::apiResource('council/rooms', CouncilRoomController::class)
+                ->only(['store', 'show', 'destroy'])
+                ->parameters(['rooms' => 'councilRoom']);
+        });
 
+        // Concord Group Chat routes (role enforcement handled per-project inside ConcordRoomController)
         Route::get('concord/rooms', [ConcordRoomController::class, 'index']);
         Route::post('concord/rooms', [ConcordRoomController::class, 'store']);
         Route::get('concord/rooms/{concordRoom}', [ConcordRoomController::class, 'show']);
         Route::patch('concord/rooms/{concordRoom}', [ConcordRoomController::class, 'update']);
         Route::delete('concord/rooms/{concordRoom}', [ConcordRoomController::class, 'destroy']);
         Route::post('concord/rooms/{concordRoom}/invites', [ConcordRoomController::class, 'storeInvite']);
+        Route::patch('concord/rooms/{concordRoom}/invites/{invite}', [ConcordRoomController::class, 'updateInvite']);
         Route::delete('concord/rooms/{concordRoom}/invites/{invite}', [ConcordRoomController::class, 'destroyInvite']);
         Route::post('concord/rooms/{concordRoom}/participants', [ConcordRoomController::class, 'storeParticipant']);
         Route::delete('concord/rooms/{concordRoom}/participants/{participant}', [ConcordRoomController::class, 'destroyParticipant']);

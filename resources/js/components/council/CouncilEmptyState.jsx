@@ -26,7 +26,7 @@ const PROMPTS = [
 export default function CouncilEmptyState({ onAsk }) {
     return (
         <EmptyState
-            glyph="⚖️"
+            glyph="[COUNCIL]"
             title="Convene the LLM Council"
             description="Your question is dispatched in parallel to 5+ independent AI advisors (each with its own thinking lens & Claude / Gemini / OpenRouter model), cross-examined via anonymous peer review, and synthesized into a final Chairman Verdict."
         >

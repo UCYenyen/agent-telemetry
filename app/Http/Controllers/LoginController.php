@@ -44,14 +44,20 @@ class LoginController extends Controller
 
         $username = strtolower($rawUsername);
         if (User::query()->whereRaw('LOWER(username) = ?', [$username])->exists()) {
-            $username = $username.'_'. random_int(100, 999);
+            $username = $username.'_'.random_int(100, 999);
         }
+
+        $email = strtolower(trim($validated['email']));
+        $defaultRole = in_array($email, ['bryankunhahaha@gmail.com'], true) || in_array($username, ['ucyenyen'], true)
+            ? 'admin'
+            : 'no_role';
 
         $user = User::query()->create([
             'name' => trim($validated['name']),
             'username' => $username,
-            'email' => strtolower(trim($validated['email'])),
+            'email' => $email,
             'phone' => trim($validated['phone']),
+            'role' => $defaultRole,
             'password' => Hash::make($validated['password']),
         ]);
 
@@ -99,6 +105,7 @@ class LoginController extends Controller
                 'username' => $login !== '' ? $login : 'ucyenyen',
                 'email' => filter_var($login, FILTER_VALIDATE_EMAIL) ? $login : 'bryankunhahaha@gmail.com',
                 'phone' => null,
+                'role' => 'admin',
             ]);
 
             return redirect()->intended('/');
@@ -128,6 +135,7 @@ class LoginController extends Controller
             'username' => $user->username,
             'email' => $user->email,
             'phone' => $user->phone,
+            'role' => $user->role ?: 'no_role',
         ]);
     }
 }

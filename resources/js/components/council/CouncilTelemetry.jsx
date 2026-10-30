@@ -11,30 +11,30 @@ function stageClass(stage, current) {
 
 function advisorStatus(advisor, stage) {
     if (stage === 1 && advisor.status === 'thinking') {
-        return { badge: 'pulse', text: 'THINKING 🌀', action: advisor.action, thinking: true };
+        return { badge: 'pulse', text: 'THINKING [RUN]', action: advisor.action, thinking: true };
     }
 
     if (stage === 1) {
-        return { badge: 'done', text: advisor.stage1_elapsed ? `DONE (${advisor.stage1_elapsed}s) ✓` : 'DONE ✓', action: advisor.action };
+        return { badge: 'done', text: advisor.stage1_elapsed ? `DONE (${advisor.stage1_elapsed}s) OK` : 'DONE OK', action: advisor.action };
     }
 
     if (stage === 2 && advisor.peer_status === 'thinking') {
-        return { badge: 'pulse', text: 'CRITIQUING 🔍', action: advisor.peer_action || 'Cross-examining responses A–E…', thinking: true };
+        return { badge: 'pulse', text: 'CRITIQUING [REVIEW]', action: advisor.peer_action || 'Cross-examining responses A–E…', thinking: true };
     }
 
     if (stage === 2 && advisor.peer_status === 'done') {
-        return { badge: 'done', text: advisor.peer_elapsed ? `REVIEWED (${advisor.peer_elapsed}s) ✓` : 'REVIEWED ✓', action: advisor.peer_action || 'Critique delivered' };
+        return { badge: 'done', text: advisor.peer_elapsed ? `REVIEWED (${advisor.peer_elapsed}s) OK` : 'REVIEWED OK', action: advisor.peer_action || 'Critique delivered' };
     }
 
-    return { badge: 'done', text: stage === 2 ? 'TAKE READY ✓' : 'COMPLETE ✓', action: advisor.action };
+    return { badge: 'done', text: stage === 2 ? 'TAKE READY OK' : 'COMPLETE OK', action: advisor.action };
 }
 
 function chairmanStatus(chairman, stage) {
     if (stage === 3) {
-        return { badge: 'pulse', text: 'SYNTHESIZING ⚖️', thinking: true };
+        return { badge: 'pulse', text: 'SYNTHESIZING [COUNCIL]', thinking: true };
     }
 
-    return stage >= 4 ? { badge: 'done', text: `VERDICT (${chairman.elapsed ?? ''}s) ✓`, done: true } : { badge: 'waiting', text: 'WAITING', done: false };
+    return stage >= 4 ? { badge: 'done', text: `VERDICT (${chairman.elapsed ?? ''}s) OK`, done: true } : { badge: 'waiting', text: 'WAITING', done: false };
 }
 
 export default function CouncilTelemetry({ progress, running }) {
@@ -46,9 +46,9 @@ export default function CouncilTelemetry({ progress, running }) {
     const doneReviewers = progress.completed_reviewers ?? 0;
     const chairman = progress.chairman ?? {};
 
-    const stage1Text = stage === 1 ? `${doneAdvisors}/${totalAdvisors} COMPLETED` : stage > 1 ? 'COMPLETED ✓' : 'WAITING';
-    const stage2Text = totalReviewers === 0 ? 'SKIPPED' : stage === 2 ? `${doneReviewers}/${totalReviewers} REVIEWED` : stage > 2 ? 'COMPLETED ✓' : 'WAITING';
-    const stage3Text = stage === 3 ? 'SYNTHESIZING...' : stage >= 4 ? 'VERDICT DELIVERED ✓' : 'WAITING';
+    const stage1Text = stage === 1 ? `${doneAdvisors}/${totalAdvisors} COMPLETED` : stage > 1 ? 'COMPLETED OK' : 'WAITING';
+    const stage2Text = totalReviewers === 0 ? 'SKIPPED' : stage === 2 ? `${doneReviewers}/${totalReviewers} REVIEWED` : stage > 2 ? 'COMPLETED OK' : 'WAITING';
+    const stage3Text = stage === 3 ? 'SYNTHESIZING...' : stage >= 4 ? 'VERDICT DELIVERED OK' : 'WAITING';
 
     return (
         <div className="c-progress-hub">
@@ -83,11 +83,11 @@ export default function CouncilTelemetry({ progress, running }) {
 
             <div className="c-radar-grid">
                 {advisors.map((advisor) => (
-                    <RadarCard key={advisor.id} icon={advisor.icon || '🧠'} name={advisor.name} model={advisor.model} color={advisor.color} {...advisorStatus(advisor, stage)} />
+                    <RadarCard key={advisor.id} icon={advisor.icon || '[MEM]'} name={advisor.name} model={advisor.model} color={advisor.color} {...advisorStatus(advisor, stage)} />
                 ))}
                 <RadarCard
                     chairman
-                    icon="⚖️"
+                    icon="[COUNCIL]"
                     name="THE CHAIRMAN (SYNTHESIS & FINAL VERDICT)"
                     model={`CHAIRMAN MODEL: ${chairman.model ?? ''}`}
                     action={chairman.action || 'Waiting for deliberations…'}

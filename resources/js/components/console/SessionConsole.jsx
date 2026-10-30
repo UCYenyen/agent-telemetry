@@ -10,9 +10,9 @@ import ChatPane from './ChatPane';
 import TerminalPane from './TerminalPane';
 
 const QUICK_ACTIONS = [
-    { icon: '✻', label: 'Show Thinking & Plan', value: 'Walk me through your step-by-step thinking and implementation plan before making edits.' },
-    { icon: '⏺', label: 'Summarize Changes', value: 'Summarize the files you have modified and any remaining tasks.' },
-    { icon: '⚡', label: 'Run Tests', value: 'Run the test suite and verify everything passes.' },
+    { icon: '*', label: 'Show Thinking & Plan', value: 'Walk me through your step-by-step thinking and implementation plan before making edits.' },
+    { icon: '>', label: 'Summarize Changes', value: 'Summarize the files you have modified and any remaining tasks.' },
+    { icon: '[FAST]', label: 'Run Tests', value: 'Run the test suite and verify everything passes.' },
     { icon: '⇄', label: 'Prepare Handoff', value: 'Prepare a clean handoff summary of your changes and API contracts for the other agents.' },
 ];
 
@@ -96,7 +96,7 @@ function ConsoleBody({ sessionId, onSelectSession, onClose }) {
                 {sidebarOpen && (
                     <aside className="cc-fleet-sidebar">
                         <div className="cc-sidebar-head">
-                            <span>✻ LIVE AGENTS ({state.sessions.length})</span>
+                            <span>* LIVE AGENTS ({state.sessions.length})</span>
                         </div>
                         <div className="cc-sidebar-list">
                             {state.sessions.map((item) => {
@@ -112,14 +112,14 @@ function ConsoleBody({ sessionId, onSelectSession, onClose }) {
                                         onClick={() => onSelectSession?.(item.id)}
                                     >
                                         <div className="cc-sidebar-item-top">
-                                            <span className="cc-sidebar-icon">{AGENTS[itemKind]?.icon || '✦'}</span>
+                                            <span className="cc-sidebar-icon">{AGENTS[itemKind]?.icon || 'AI'}</span>
                                             <span className="cc-sidebar-name">{item.title || item.name}</span>
                                             <span className={`cc-status-dot ${isItemWorking ? 'working' : 'idle'}`} />
                                         </div>
                                         <div className="cc-sidebar-item-meta">
                                             <span>{item.model || 'auto'}</span>
                                             <span>·</span>
-                                            <span>{isItemWorking ? '✻ Thinking…' : 'Ready'}</span>
+                                            <span>{isItemWorking ? '* Thinking…' : 'Ready'}</span>
                                         </div>
                                         {item.last_prompt && (
                                             <div className="cc-sidebar-thought">

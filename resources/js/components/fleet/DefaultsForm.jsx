@@ -58,7 +58,7 @@ export default function DefaultsForm({ apiKey, onSaved }) {
             <label className="fallback-box">
                 <input type="checkbox" checked={form.fallback_enabled} onChange={(event) => set('fallback_enabled')(event.target.checked)} />
                 <div className="fallback-box-text">
-                    <strong>🛡️ ENABLE MULTI-STAGE CASCADING FAILOVER</strong>
+                    <strong>[SHIELD] ENABLE MULTI-STAGE CASCADING FAILOVER</strong>
                     Automatically steps through your Fallback Chain above (#1 → #2 → #3…) if the primary model hits rate/quota limits.
                 </div>
             </label>

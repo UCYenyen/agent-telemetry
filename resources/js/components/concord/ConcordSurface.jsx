@@ -10,6 +10,7 @@ import ConnectDeviceModal from './ConnectDeviceModal';
 export default function ConcordSurface({ initialFullscreen = false }) {
     const { state, reload, toast, sharedToken } = useApp();
     const rooms = state?.concord?.rooms || [];
+    const isAdmin = Boolean(state?.user?.role === 'admin' || state?.user?.is_admin);
 
     const [selectedRoomId, setSelectedRoomId] = useState(null);
     const [roomDetail, setRoomDetail] = useState(null);
@@ -20,7 +21,6 @@ export default function ConcordSurface({ initialFullscreen = false }) {
     const [newRoomTitle, setNewRoomTitle] = useState('');
     const [creatingRoom, setCreatingRoom] = useState(false);
 
-    // Invite-only email gate state for external visitors
     const [requiresEmailGate, setRequiresEmailGate] = useState(false);
     const [gateInfo, setGateInfo] = useState(null);
     const [visitorEmail, setVisitorEmail] = useState(() => {
@@ -74,10 +74,10 @@ export default function ConcordSurface({ initialFullscreen = false }) {
             const token = sharedToken || roomDetail.share_token;
             const updated = await api.post(`/api/concord/shared/${token}/messages`, {
                 ...payload,
-                sender_email: payload.sender_email || visitorEmail || undefined,
+                sender_email: payload.sender_email || visitorEmail || state?.user?.email || undefined,
             });
             setRoomDetail(updated);
-            toast('Prompt synced to VPS Shared Memory & local computer queues!');
+            toast('Prompt synced to VPS Shared Memory & local computer queues.');
         } catch (err) {
             toast(err.message);
         } finally {
@@ -87,18 +87,18 @@ export default function ConcordSurface({ initialFullscreen = false }) {
 
     const handleCreateRoom = async (event) => {
         event.preventDefault();
-        if (!newRoomTitle.trim()) return;
+        if (!newRoomTitle.trim() || !isAdmin) return;
         setCreatingRoom(true);
         try {
             const created = await api.post('/api/concord/rooms', {
                 title: newRoomTitle.trim(),
-                access_mode: 'link_edit',
+                access_mode: 'invite_only',
             });
             setNewRoomTitle('');
             setSelectedRoomId(created.id);
             setRoomDetail(created);
             reload();
-            toast(`Created group chat room "${created.title}"`);
+            toast(`Created group chat project "${created.title}"`);
         } catch (err) {
             toast(err.message);
         } finally {
@@ -131,9 +131,9 @@ export default function ConcordSurface({ initialFullscreen = false }) {
         return (
             <div className="concord-gate-screen">
                 <form className="concord-gate-card" onSubmit={handleEmailGateSubmit}>
-                    <div className="concord-modal-kicker">🔒 INVITE-ONLY MULTI-AGENT ROOM</div>
+                    <div className="concord-modal-kicker">[RESTRICTED] INVITE-ONLY MULTI-AGENT PROJECT</div>
                     <h2>{gateInfo?.title || 'Concord Shared Memory Room'}</h2>
-                    <p>{gateInfo?.message || 'Enter the email address that was invited to this room to continue.'}</p>
+                    <p>{gateInfo?.message || 'Enter the email address that was invited by Admin to join this project.'}</p>
                     <input
                         type="email"
                         className="input"
@@ -143,30 +143,31 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                         required
                     />
                     <button type="submit" className="btn btn-emerald" style={{ marginTop: '0.75rem', width: '100%' }}>
-                        Verify Invited Email & Join Group Chat →
+                        Verify Invited Email & Join Group Chat
                     </button>
                 </form>
             </div>
         );
     }
 
-    const canEdit = roomDetail ? (roomDetail.permission ? roomDetail.permission === 'edit' : true) : true;
+    const canEdit = roomDetail ? roomDetail.permission === 'edit' : isAdmin;
+    const projectRole = roomDetail?.project_role || (isAdmin ? 'admin' : 'no_role');
+    const bypassedByLink = Boolean(roomDetail?.role_bypassed_by_link);
     const accessBadge = roomDetail?.access_mode === 'invite_only'
-        ? '🔒 Restricted (Invite Only)'
+        ? 'RESTRICTED (INVITE ONLY - CHECKS PROJECT ROLE)'
         : roomDetail?.access_mode === 'link_view'
-            ? '👀 Anyone with link can view'
-            : '✏️ Anyone with link can edit';
+            ? 'ANYONE WITH LINK CAN VIEW (CHECKS PROJECT ROLE FOR EDIT)'
+            : 'ANYONE WITH LINK CAN EDIT (ROLE BYPASSED)';
 
     return (
         <section className={`concord-surface${fullscreen ? ' concord-fullscreen' : ''}`}>
-            {/* Top Claude Code-style Group Chat Command Bar */}
             <header className="concord-topbar">
                 <div className="concord-topbar-left">
                     <span className="cc-brand-badge">CONCORD // MULTI-AGENT GROUP CHAT</span>
                     <div className="concord-room-titles">
-                        <h2 className="concord-room-title">{roomDetail?.title || 'Loading Shared Memory Hub…'}</h2>
+                        <h2 className="concord-room-title">{roomDetail?.title || 'Loading Shared Memory Hub...'}</h2>
                         <span className="concord-room-sub">
-                            {accessBadge} · VPS Shared Memory + Local Computer Execution
+                            MODE: {accessBadge} // YOUR PROJECT ROLE: {projectRole.toUpperCase()} {bypassedByLink ? '(BYPASSED BY EDIT LINK)' : ''}
                         </span>
                     </div>
                 </div>
@@ -176,7 +177,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                         <select
                             className="select concord-room-switcher"
                             value={selectedRoomId || ''}
-                            onChange={(e) => setSelectedRoomId(Number(e.target.value))}
+                            onChange={(e) => setSelectedRoomId(e.target.value)}
                         >
                             {rooms.map((r) => (
                                 <option key={r.id} value={r.id}>
@@ -188,19 +189,21 @@ export default function ConcordSurface({ initialFullscreen = false }) {
 
                     {roomDetail && (
                         <>
-                            <button
-                                type="button"
-                                className="btn btn-emerald"
-                                onClick={() => setConnectModalOpen(true)}
-                            >
-                                ⚡ Connect Local PC / MCP
-                            </button>
+                            {canEdit && (
+                                <button
+                                    type="button"
+                                    className="btn btn-emerald"
+                                    onClick={() => setConnectModalOpen(true)}
+                                >
+                                    Connect Local PC / MCP
+                                </button>
+                            )}
                             <button
                                 type="button"
                                 className="btn btn-primary"
                                 onClick={() => setShareModalOpen(true)}
                             >
-                                🔗 Share & Invite ({accessBadge.split(' ')[0]})
+                                {isAdmin ? 'Share & Manage Roles' : 'Roles & Share Info'}
                             </button>
                             <button
                                 type="button"
@@ -210,7 +213,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                                     'Copied group chat share link!'
                                 )}
                             >
-                                📋 Copy Link
+                                Copy Link
                             </button>
                         </>
                     )}
@@ -220,22 +223,22 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                         className="btn"
                         onClick={() => setFullscreen((prev) => !prev)}
                     >
-                        {fullscreen ? '↙ Exit Fullscreen' : '⛶ Fullscreen Prompt UI'}
+                        {fullscreen ? 'Exit Fullscreen' : 'Fullscreen Prompt UI'}
                     </button>
                 </div>
             </header>
 
-            {!sharedToken && !fullscreen && (
+            {!sharedToken && !fullscreen && isAdmin && (
                 <form className="concord-new-room-bar" onSubmit={handleCreateRoom}>
                     <input
                         type="text"
                         className="input"
-                        placeholder="Create another multi-agent shared memory room (e.g. Mobile App + API Handoff)…"
+                        placeholder="Admin Only: Create a new multi-agent group chat project first, then invite members or share edit link..."
                         value={newRoomTitle}
                         onChange={(e) => setNewRoomTitle(e.target.value)}
                     />
                     <button type="submit" className="btn btn-primary" disabled={creatingRoom}>
-                        + New Group Chat Room
+                        + New Group Chat Project (Admin)
                     </button>
                 </form>
             )}
@@ -247,6 +250,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                     sending={sending}
                     onSendPrompt={handleSendPrompt}
                     onOpenConnectModal={() => setConnectModalOpen(true)}
+                    onOpenRolesModal={() => setShareModalOpen(true)}
                 />
 
                 <SharedMemoryPanel

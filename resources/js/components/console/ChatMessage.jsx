@@ -16,7 +16,7 @@ export default function ChatMessage({ message, avatar, sender, thinkingSteps = [
     return (
         <div className={`ow-msg-row cc-turn-row ${isUser ? 'user' : 'assistant'}${live ? ' is-live' : ''}`}>
             <div className={`ow-avatar cc-avatar ${isUser ? 'user' : 'ai'}`}>
-                {avatar ?? (isUser ? '❯' : '✦')}
+                {avatar ?? (isUser ? '>' : 'AI')}
             </div>
             <div className="ow-msg-content cc-turn-content">
                 <div className="ow-msg-header cc-turn-header">
@@ -34,7 +34,7 @@ export default function ChatMessage({ message, avatar, sender, thinkingSteps = [
                             className="cc-thinking-toggle"
                             onClick={() => setThoughtsOpen((open) => !open)}
                         >
-                            <span className="cc-thinking-star">✻</span>
+                            <span className="cc-thinking-star">*</span>
                             <span className="cc-thinking-title">
                                 {live ? 'Agent Thinking Live…' : `Thought process (${effectiveThoughts.length} step${effectiveThoughts.length === 1 ? '' : 's'})`}
                             </span>
@@ -44,7 +44,7 @@ export default function ChatMessage({ message, avatar, sender, thinkingSteps = [
                             <div className="cc-thinking-body">
                                 {effectiveThoughts.map((step, idx) => (
                                     <div key={idx} className="cc-thinking-line">
-                                        <span className="cc-thinking-bullet">∴</span>
+                                        <span className="cc-thinking-bullet">-</span>
                                         <span>{step}</span>
                                     </div>
                                 ))}
@@ -58,13 +58,13 @@ export default function ChatMessage({ message, avatar, sender, thinkingSteps = [
                         {effectiveTools.map((item, idx) => (
                             <div key={idx} className="cc-tool-card">
                                 <div className="cc-tool-head">
-                                    <span className="cc-tool-dot">⏺</span>
+                                    <span className="cc-tool-dot">&gt;</span>
                                     <span className="cc-tool-name">{item.tool || item.name || 'Tool'}</span>
                                     <code className="cc-tool-target">{item.target || item.detail || ''}</code>
                                 </div>
                                 {item.output && (
                                     <div className="cc-tool-output">
-                                        <span className="cc-tool-elbow">⎿</span>
+                                        <span className="cc-tool-elbow">|-</span>
                                         <pre>{item.output}</pre>
                                     </div>
                                 )}

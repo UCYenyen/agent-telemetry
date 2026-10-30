@@ -66,7 +66,7 @@ export default function ModelPicker({ kind, current, onSelect }) {
                                         <span>
                                             {AGENTS[group].icon} {model}
                                         </span>
-                                        {model === current && <span>✓</span>}
+                                        {model === current && <span>OK</span>}
                                     </button>
                                 ))}
                         </div>

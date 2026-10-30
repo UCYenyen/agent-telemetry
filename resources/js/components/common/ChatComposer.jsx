@@ -64,7 +64,7 @@ export default function ChatComposer({
                                 onClick={() => (item.instant ? onSubmit(item.value) : insertChip(item.value))}
                                 disabled={disabled}
                             >
-                                <span className="cc-pill-glyph">{item.icon || '✦'}</span>
+                                <span className="cc-pill-glyph">{item.icon || 'AI'}</span>
                                 <span>{item.label}</span>
                             </button>
                         ))}
@@ -73,7 +73,7 @@ export default function ChatComposer({
                 <form onSubmit={submit}>
                     <div className={`ow-input-box cc-input-card${disabled ? ' is-disabled' : ''}`}>
                         <div className="cc-prompt-row">
-                            <span className="cc-prompt-chevron" aria-hidden="true">❯</span>
+                            <span className="cc-prompt-chevron" aria-hidden="true">&gt;</span>
                             <textarea
                                 ref={textarea}
                                 className="ow-textarea cc-textarea"
@@ -89,12 +89,12 @@ export default function ChatComposer({
                         </div>
                         <div className="ow-input-bar cc-input-bar">
                             <div className="ow-input-hint cc-input-meta">
-                                <span className="cc-mode-badge">⏵⏵ auto mode</span>
+                                <span className="cc-mode-badge"> auto mode</span>
                                 {leftSlot}
                                 {hint}
                             </div>
                             <div className="cc-submit-group">
-                                <span className="cc-kbd-hint">⏎ to send · ⇧⏎ newline</span>
+                                <span className="cc-kbd-hint"> to send · ⇧ newline</span>
                                 <button type="submit" className="cc-send-btn" disabled={disabled}>
                                     {submitLabel}
                                 </button>

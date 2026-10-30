@@ -7,8 +7,8 @@ export default function TakeCard({ message }) {
             <div className="c-take-head">
                 <div className={`c-take-sender${isReview ? ' small' : ''}`}>
                     <span>
-                        {isReview && '🔍 '}
-                        {message.icon || '🧠'}
+                        {isReview && '[REVIEW] '}
+                        {message.icon || '[MEM]'}
                     </span>
                     <span>{message.sender}</span>
                 </div>

@@ -11,7 +11,7 @@ function AdvisorForm({ advisor, onClose }) {
         name: advisor.name ?? '',
         model: advisor.model ?? 'gemini-3.8-flash-high',
         use_openrouter: Boolean(advisor.use_openrouter),
-        icon: advisor.icon ?? '🧠',
+        icon: advisor.icon ?? '[MEM]',
         color: advisor.color ?? '#a855f7',
         prompt: advisor.prompt ?? '',
     });
@@ -22,7 +22,7 @@ function AdvisorForm({ advisor, onClose }) {
     const submit = (event) => {
         event.preventDefault();
         onClose();
-        const payload = { ...form, name: form.name.trim(), prompt: form.prompt.trim(), icon: form.icon.trim() || '🧠', model: models.includes(form.model) ? form.model : models[0] };
+        const payload = { ...form, name: form.name.trim(), prompt: form.prompt.trim(), icon: form.icon.trim() || '[MEM]', model: models.includes(form.model) ? form.model : models[0] };
         run(() => (advisor.id ? api.patch(`/api/advisors/${advisor.id}`, payload) : api.post('/api/advisors', payload)), 'Personality saved to Council roster!');
     };
 
@@ -31,7 +31,7 @@ function AdvisorForm({ advisor, onClose }) {
             <div className="field">
                 <label className="check-label">
                     <input type="checkbox" checked={form.use_openrouter} onChange={(event) => set('use_openrouter')(event.target.checked)} />
-                    <span>🌐 USE OPENROUTER API FOR THIS AGENT PERSONALITY</span>
+                    <span>[OR] USE OPENROUTER API FOR THIS AGENT PERSONALITY</span>
                 </label>
             </div>
             <div className="grid2">

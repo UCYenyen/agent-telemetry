@@ -4,6 +4,7 @@ import { useApp } from '../../context/AppContext';
 
 export default function SharedMemoryPanel({ room, activeToken, canEdit, onUpdated }) {
     const { toast } = useApp();
+    const [noteKey, setNoteKey] = useState('');
     const [noteText, setNoteText] = useState('');
     const [savingNote, setSavingNote] = useState(false);
 
@@ -11,12 +12,17 @@ export default function SharedMemoryPanel({ room, activeToken, canEdit, onUpdate
         return null;
     }
 
-    const memory = room.shared_memory || {};
-    const architecture = memory.architecture || {};
-    const contracts = memory.contracts || {};
-    const decisions = memory.decisions || [];
+    const rawMemory = room.shared_memory || [];
+    const memoryItems = Array.isArray(rawMemory)
+        ? rawMemory
+        : [
+              ...Object.entries(rawMemory.architecture || {}).map(([k, v]) => ({ key: k, category: 'architecture', content: String(v), author_agent: 'System' })),
+              ...Object.entries(rawMemory.contracts || {}).map(([k, v]) => ({ key: k, category: 'contract', content: String(v), author_agent: 'System' })),
+              ...(rawMemory.decisions || []).map((d, i) => ({ key: `decision_${i + 1}`, category: 'decision', content: d.summary || String(d), author_agent: d.author || 'Agent' })),
+          ];
+
     const claims = room.active_claims || [];
-    const localTasks = room.local_tasks || [];
+    const localTasks = room.local_tasks || room.localTasks || [];
     const token = activeToken || room.share_token;
 
     const handleAddDecision = async (event) => {
@@ -24,23 +30,14 @@ export default function SharedMemoryPanel({ room, activeToken, canEdit, onUpdate
         if (!noteText.trim() || !canEdit) return;
         setSavingNote(true);
         try {
-            const nextDecisions = [
-                {
-                    author: 'Shared Memory Pin',
-                    summary: noteText.trim(),
-                    timestamp: new Date().toISOString(),
-                },
-                ...decisions,
-            ].slice(0, 20);
-
             await api.patch(`/api/concord/rooms/${room.id}/memory`, {
-                shared_memory: {
-                    ...memory,
-                    decisions: nextDecisions,
-                },
-                author: 'Shared Memory Pin',
-                summary: `Pinned to VPS Shared Memory: "${noteText.trim()}"`,
+                key: noteKey.trim() || `decision_${Date.now()}`,
+                category: 'decision',
+                content: noteText.trim(),
+                author_agent: 'Shared Memory Pin',
+                author_user: 'Project Collaborator',
             });
+            setNoteKey('');
             setNoteText('');
             toast('Pinned decision to VPS Shared Memory Bank');
             onUpdated?.();
@@ -56,7 +53,7 @@ export default function SharedMemoryPanel({ room, activeToken, canEdit, onUpdate
             await api.post(`/api/concord/shared/${token}/tasks/${task.id}/complete`, {
                 status: 'completed',
                 modified_files: task.modified_files || [],
-                result_summary: `Executed local prompt and applied file changes directly on ${task.target_device} (${task.target_user_name}).`,
+                result_summary: `Executed local prompt and applied file changes directly on ${task.target_device} (${task.target_agent_name || 'Local Agent'}).`,
             });
             toast(`Applied queued edits on ${task.target_device}!`);
             onUpdated?.();
@@ -69,11 +66,11 @@ export default function SharedMemoryPanel({ room, activeToken, canEdit, onUpdate
         <aside className="concord-memory-panel">
             <div className="concord-panel-section">
                 <div className="concord-section-head">
-                    <span className="concord-section-title">💻 LOCAL COMPUTER EDIT QUEUE</span>
+                    <span className="concord-section-title">LOCAL COMPUTER EDIT QUEUE</span>
                     <span className="concord-badge">{localTasks.length} TASKS</span>
                 </div>
                 <div className="concord-section-sub">
-                    VPS coordinates the context window; file edits execute on each user’s own local computer.
+                    VPS coordinates the context window; file edits execute on each user local computer.
                 </div>
 
                 <div className="concord-task-list">
@@ -83,15 +80,15 @@ export default function SharedMemoryPanel({ room, activeToken, canEdit, onUpdate
                         localTasks.slice(0, 8).map((task) => (
                             <div key={task.id} className={`concord-task-card status-${task.status}`}>
                                 <div className="concord-task-top">
-                                    <span className="concord-task-device">💻 {task.target_device}</span>
+                                    <span className="concord-task-device">PC: {task.target_device}</span>
                                     <span className={`concord-task-status status-${task.status}`}>
-                                        {task.status === 'completed' ? '✓ Applied on PC' : task.status === 'executing_on_device' ? '⚡ Running on PC' : '⏳ Queued for PC'}
+                                        {task.status === 'completed' ? '[APPLIED ON PC]' : task.status === 'executing_on_device' ? '[RUNNING ON PC]' : '[QUEUED FOR PC]'}
                                     </span>
                                 </div>
-                                <div className="concord-task-title">{task.title}</div>
+                                <div className="concord-task-title">{task.title || task.target_agent_name || 'Local Workspace Edit'}</div>
                                 <div className="concord-task-meta">
-                                    <span>Owner: <strong>{task.target_user_name}</strong></span>
-                                    {task.initiated_by_agent && <span>From: {task.initiated_by_agent}</span>}
+                                    <span>Agent: <strong>{task.target_agent_name || task.target_user_name}</strong></span>
+                                    {task.from_sender && <span>From: {task.from_sender}</span>}
                                 </div>
                                 {Array.isArray(task.modified_files) && task.modified_files.length > 0 && (
                                     <div className="concord-task-files">
@@ -107,7 +104,7 @@ export default function SharedMemoryPanel({ room, activeToken, canEdit, onUpdate
                                         style={{ marginTop: '0.45rem', width: '100%' }}
                                         onClick={() => handleApplyLocalTask(task)}
                                     >
-                                        ⚡ Confirm Applied on {task.target_device}
+                                        Confirm Applied on {task.target_device}
                                     </button>
                                 )}
                             </div>
@@ -118,45 +115,39 @@ export default function SharedMemoryPanel({ room, activeToken, canEdit, onUpdate
 
             <div className="concord-panel-section">
                 <div className="concord-section-head">
-                    <span className="concord-section-title">🧠 VPS SHARED MEMORY BANK</span>
+                    <span className="concord-section-title">VPS SHARED MEMORY BANK</span>
                     <span className="concord-badge emerald">LIVE SYNC</span>
                 </div>
 
-                <div className="concord-memory-kv">
-                    {Object.entries(architecture).map(([k, v]) => (
-                        <div key={k} className="concord-kv-row">
-                            <span className="concord-kv-key">{k}</span>
-                            <span className="concord-kv-val">{String(v)}</span>
-                        </div>
-                    ))}
-                    {Object.entries(contracts).map(([k, v]) => (
-                        <div key={k} className="concord-kv-row">
-                            <span className="concord-kv-key">{k}</span>
-                            <span className="concord-kv-val">{String(v)}</span>
-                        </div>
-                    ))}
-                </div>
-
                 {canEdit && (
-                    <form className="concord-pin-form" onSubmit={handleAddDecision}>
+                    <form className="concord-pin-form" onSubmit={handleAddDecision} style={{ flexDirection: 'column' }}>
                         <input
                             type="text"
                             className="input"
-                            placeholder="Pin shared contract or memory note…"
-                            value={noteText}
-                            onChange={(e) => setNoteText(e.target.value)}
+                            placeholder="Memory key (e.g. api_contract)..."
+                            value={noteKey}
+                            onChange={(e) => setNoteKey(e.target.value)}
                         />
-                        <button type="submit" className="btn btn-xs btn-primary" disabled={savingNote}>
-                            + Pin
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <input
+                                type="text"
+                                className="input"
+                                placeholder="Pin shared contract or memory note..."
+                                value={noteText}
+                                onChange={(e) => setNoteText(e.target.value)}
+                            />
+                            <button type="submit" className="btn btn-xs btn-primary" disabled={savingNote}>
+                                + Pin
+                            </button>
+                        </div>
                     </form>
                 )}
 
                 <div className="concord-decisions-list">
-                    {decisions.slice(0, 6).map((d, idx) => (
-                        <div key={idx} className="concord-decision-item">
-                            <div className="concord-decision-author">✻ {d.author}</div>
-                            <div className="concord-decision-summary">{d.summary}</div>
+                    {memoryItems.slice(0, 10).map((item, idx) => (
+                        <div key={item.id || idx} className="concord-decision-item">
+                            <div className="concord-decision-author">[{item.category || 'memory'}] {item.key} - by {item.author_agent || 'System'}</div>
+                            <div className="concord-decision-summary">{item.content}</div>
                         </div>
                     ))}
                 </div>
@@ -164,22 +155,26 @@ export default function SharedMemoryPanel({ room, activeToken, canEdit, onUpdate
 
             <div className="concord-panel-section">
                 <div className="concord-section-head">
-                    <span className="concord-section-title">🛡️ CROSS-DEVICE FILE CLAIMS</span>
+                    <span className="concord-section-title">CROSS-DEVICE FILE CLAIMS</span>
                     <span className="concord-badge">{claims.length} LOCKED</span>
                 </div>
                 <div className="concord-claims-list">
-                    {claims.map((claim, idx) => (
-                        <div key={idx} className="concord-claim-card">
-                            <div className="concord-claim-owner">
-                                <strong>{claim.agent}</strong> · <span>{claim.device}</span>
+                    {claims.length === 0 ? (
+                        <div className="concord-empty-box">No active file locks across user computers.</div>
+                    ) : (
+                        claims.map((claim, idx) => (
+                            <div key={idx} className="concord-claim-card">
+                                <div className="concord-claim-owner">
+                                    <strong>{claim.agent_name || claim.agent}</strong> - <span>{claim.device_name || claim.device}</span>
+                                </div>
+                                <div className="concord-task-files">
+                                    {(claim.files || (claim.file ? [claim.file] : [])).map((f, i) => (
+                                        <code key={i} className="concord-file-chip">{f}</code>
+                                    ))}
+                                </div>
                             </div>
-                            <div className="concord-task-files">
-                                {(claim.files || []).map((f, i) => (
-                                    <code key={i} className="concord-file-chip">{f}</code>
-                                ))}
-                            </div>
-                        </div>
-                    ))}
+                        ))
+                    )}
                 </div>
             </div>
         </aside>

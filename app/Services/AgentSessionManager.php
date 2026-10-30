@@ -398,7 +398,7 @@ class AgentSessionManager
 
         $session->messages()->create([
             'role' => 'assistant',
-            'content' => "⚡ [Cascading Failover Stage 2 Activated ({$reason}): Switched to OpenRouter API ({$model})]",
+            'content' => "[FAILOVER] [Cascading Failover Stage 2 Activated ({$reason}): Switched to OpenRouter API ({$model})]",
             'model' => "openrouter // {$model}",
         ]);
 

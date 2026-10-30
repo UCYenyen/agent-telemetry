@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import TelemetryBar from './layout/TelemetryBar';
 import Masthead from './layout/Masthead';
@@ -11,12 +11,19 @@ import ConcordSurface from './concord/ConcordSurface';
 
 export default function App() {
     const { state, reload, toast, sharedToken } = useApp();
+    const isAdmin = Boolean(state?.user?.role === 'admin' || state?.user?.is_admin);
     const [surface, setSurface] = useState(sharedToken ? 'concord' : 'deck');
     const [deploying, setDeploying] = useState(false);
     const [consoleSessionId, setConsoleSessionId] = useState(null);
 
+    useEffect(() => {
+        if (state && !isAdmin && surface !== 'concord') {
+            setSurface('concord');
+        }
+    }, [state, isAdmin, surface]);
+
     const refresh = () => {
-        toast('Syncing fleet telemetry…');
+        toast('Syncing fleet telemetry...');
         reload();
     };
 
@@ -30,12 +37,20 @@ export default function App() {
             <div className="shell">
                 <Masthead onRefresh={refresh} onDeploy={() => setDeploying(true)} />
                 <ModeNav surface={surface} onChange={setSurface} />
-                {state && surface === 'deck' && <FleetDeck onOpenConsole={setConsoleSessionId} />}
-                {(surface === 'concord' || sharedToken) && <ConcordSurface initialFullscreen={Boolean(sharedToken)} />}
-                {state && surface === 'council' && <CouncilSurface />}
+                {state && isAdmin && surface === 'deck' && <FleetDeck onOpenConsole={setConsoleSessionId} />}
+                {(surface === 'concord' || sharedToken || (state && !isAdmin)) && (
+                    <ConcordSurface initialFullscreen={Boolean(sharedToken)} />
+                )}
+                {state && isAdmin && surface === 'council' && <CouncilSurface />}
             </div>
-            {state && <DeploySessionModal open={deploying} onClose={() => setDeploying(false)} />}
-            {state && <SessionConsole sessionId={consoleSessionId} onSelectSession={setConsoleSessionId} onClose={() => setConsoleSessionId(null)} />}
+            {state && isAdmin && <DeploySessionModal open={deploying} onClose={() => setDeploying(false)} />}
+            {state && isAdmin && (
+                <SessionConsole
+                    sessionId={consoleSessionId}
+                    onSelectSession={setConsoleSessionId}
+                    onClose={() => setConsoleSessionId(null)}
+                />
+            )}
         </>
     );
 }

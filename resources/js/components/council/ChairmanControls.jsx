@@ -12,7 +12,7 @@ export default function ChairmanControls() {
     return (
         <div className="council-controls-strip">
             <div className="council-settings-inline">
-                <label htmlFor="chairman-model">⚖️ CHAIRMAN MODEL:</label>
+                <label htmlFor="chairman-model">[COUNCIL] CHAIRMAN MODEL:</label>
                 <OpenRouterToggle
                     on={council.chairman_use_openrouter}
                     onToggle={(enabled) => save({ chairman_use_openrouter: enabled }, `Chairman OpenRouter mode: ${enabled ? 'ON' : 'OFF'}`)}
