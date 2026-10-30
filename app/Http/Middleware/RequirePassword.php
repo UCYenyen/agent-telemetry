@@ -14,6 +14,10 @@ class RequirePassword
             return $next($request);
         }
 
+        if ($request->isMethod('GET') && $request->path() === '/' && ($request->filled('room') || $request->filled('invite'))) {
+            return $next($request);
+        }
+
         return $request->expectsJson() || $request->is('api/*')
             ? response()->json(['message' => 'Unauthenticated.'], 401)
             : redirect()->guest(route('login'));

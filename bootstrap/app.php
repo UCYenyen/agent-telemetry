@@ -10,6 +10,10 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // TLS terminates at Nginx Proxy Manager; the app is only reachable through it or localhost
         $middleware->trustProxies(at: '*');
+        $middleware->validateCsrfTokens(except: [
+            'api/concord/mcp/*',
+            'api/concord/shared/*',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
