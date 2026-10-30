@@ -8,10 +8,12 @@ use App\Models\ConcordRoom;
 use App\Models\CouncilRoom;
 use App\Models\Fallback;
 use App\Models\Setting;
+use App\Models\User;
 use App\Services\ConcordHubService;
 use App\Services\OpenRouter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class StateController extends Controller
 {
@@ -25,6 +27,16 @@ class StateController extends Controller
             'email' => 'bryankunhahaha@gmail.com',
             'role' => 'admin',
         ]);
+
+        $userId = $request->session()->get('agent_host.user_id') ?? ($sessionUser['id'] ?? null);
+        if ($userId && Schema::hasTable('users')) {
+            $dbUser = User::find($userId);
+            if ($dbUser) {
+                $sessionUser['role'] = $dbUser->role ?: 'no_role';
+                $request->session()->put('agent_host.user', $sessionUser);
+            }
+        }
+
         $userRole = $sessionUser['role'] ?? 'admin';
         $isAdmin = $userRole === 'admin';
 
