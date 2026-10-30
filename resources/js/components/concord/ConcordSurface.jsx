@@ -2,19 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { api } from '../../lib/api';
 import { useInterval } from '../../hooks/useInterval';
-import ConcordGroupChat from './ConcordGroupChat';
+import AgentBoard, { presenceOf } from './AgentBoard';
+import RoomChat from './RoomChat';
 import SharedMemoryPanel from './SharedMemoryPanel';
 import ShareRoomModal from './ShareRoomModal';
 import ConnectDeviceModal from './ConnectDeviceModal';
-
-function activateOnKey(handler) {
-    return (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            handler();
-        }
-    };
-}
 
 export default function ConcordSurface({ initialFullscreen = false }) {
     const { state, reload, toast, sharedToken } = useApp();
@@ -31,6 +23,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
     const [newRoomTitle, setNewRoomTitle] = useState('');
     const [creatingRoom, setCreatingRoom] = useState(false);
     const [deletingRoom, setDeletingRoom] = useState(false);
+    const [sideTab, setSideTab] = useState('chat');
     const [localParticipantId, setLocalParticipantId] = useState('');
 
     const [requiresEmailGate, setRequiresEmailGate] = useState(false);
@@ -249,200 +242,128 @@ export default function ConcordSurface({ initialFullscreen = false }) {
     }
 
     const canEdit = roomDetail ? roomDetail.permission === 'edit' : isAdmin;
-    const projectRole = roomDetail?.project_role || (isAdmin ? 'admin' : 'no_role');
-    const bypassedByLink = Boolean(roomDetail?.role_bypassed_by_link);
-    const totalParticipants = roomDetail?.participants?.length || 0;
+    const participants = roomDetail?.participants || [];
+    const myParticipantIds = new Set(myParticipants.map((p) => String(p.id)));
+    const workingCount = participants.filter((p) => presenceOf(p, Date.now()) === 'working').length;
     const totalMembers = (roomDetail?.invites?.length || 0) + 1;
-
-    const accessBadge = roomDetail?.access_mode === 'invite_only'
-        ? 'RESTRICTED (INVITE ONLY)'
-        : roomDetail?.access_mode === 'link_view'
-            ? 'ANYONE WITH LINK CAN VIEW'
-            : 'ANYONE WITH LINK CAN EDIT (ROLE BYPASSED)';
+    const accessLabel = { invite_only: 'Invite only', link_view: 'Anyone with the link can view', link_edit: 'Anyone with the link can edit' }[roomDetail?.access_mode] || '';
 
     return (
-        <section className={`concord-surface${fullscreen ? ' concord-fullscreen' : ''}`}>
-            <header className="concord-topbar">
-                <div className="concord-topbar-left">
-                    <div className="concord-room-titles">
-                        <h2 className="concord-room-title">{roomDetail?.title || 'Loading Shared Memory Hub...'}</h2>
-                        <span className="concord-room-sub">
-                            MODE: {accessBadge} // ROLE: {projectRole.toUpperCase()} {bypassedByLink ? '(BYPASSED BY EDIT LINK)' : ''} // {totalParticipants} MCP AGENT{totalParticipants === 1 ? '' : 'S'} CONNECTED
-                        </span>
-                    </div>
-                </div>
-
-                <div className="concord-topbar-actions">
-                    {rooms.length > 1 && !sharedToken && (
+        <section className={`concord-surface room-view${fullscreen ? ' concord-fullscreen' : ''}`}>
+            <header className="room-head">
+                <div className="room-head-main">
+                    {rooms.length > 1 && !sharedToken ? (
                         <select
-                            className="select concord-room-switcher"
+                            className="select room-switcher"
+                            aria-label="Room"
                             value={selectedRoomId || ''}
                             onChange={(e) => setSelectedRoomId(e.target.value)}
                         >
                             {rooms.map((r) => (
-                                <option key={r.id} value={r.id}>
-                                    {r.title} ({r.participants_count ?? 0} MCP agents)
-                                </option>
+                                <option key={r.id} value={r.id}>{r.title}</option>
                             ))}
                         </select>
+                    ) : (
+                        <h2 className="room-title">{roomDetail?.title || 'Loading room…'}</h2>
                     )}
-
-                    {roomDetail && (
-                        <>
-                            {canEdit && (
-                                <button
-                                    type="button"
-                                    className={`btn ${hasConnectedMcp ? 'btn-emerald' : 'btn-amber-pulse'}`}
-                                    onClick={() => setConnectModalOpen(true)}
-                                >
-                                    {hasConnectedMcp
-                                        ? `MCP Connected (${myParticipants[0].device_name})`
-                                        : 'Connect your MCP'}
-                                </button>
-                            )}
-                            <button
-                                type="button"
-                                className="btn"
-                                onClick={() => setShareModalOpen(true)}
-                            >
-                                {isAdmin ? `Members (${totalMembers})` : `Team (${totalMembers})`}
-                            </button>
-                            <button
-                                type="button"
-                                className="btn"
-                                onClick={() => copyText(
-                                    roomDetail.share_url || `${window.location.origin}/?room=${roomDetail.share_token}`,
-                                    'Copied group chat share link!'
-                                )}
-                            >
-                                Copy link
-                            </button>
-                            {isAdmin && !sharedToken && (
-                                <button
-                                    type="button"
-                                    className="btn btn-danger"
-                                    onClick={handleDeleteRoom}
-                                    disabled={deletingRoom}
-                                >
-                                    {deletingRoom ? 'Deleting...' : 'Delete Group Chat'}
-                                </button>
-                            )}
-                        </>
-                    )}
-
-                    <button
-                        type="button"
-                        className="btn"
-                        onClick={() => setFullscreen((prev) => !prev)}
-                    >
-                        {fullscreen ? 'Exit full screen' : 'Full screen'}
-                    </button>
+                    <p className="room-meta">
+                        {participants.length} agent{participants.length === 1 ? '' : 's'}
+                        {workingCount > 0 && <span className="room-meta-working"> · {workingCount} working</span>}
+                        {accessLabel && ` · ${accessLabel}`}
+                    </p>
                 </div>
+
+                {roomDetail && (
+                    <div className="room-actions">
+                        {canEdit && (
+                            <button type="button" className="btn btn-primary" onClick={() => setConnectModalOpen(true)}>
+                                {hasConnectedMcp ? 'Connect another agent' : 'Connect your agent'}
+                            </button>
+                        )}
+                        <button type="button" className="btn" onClick={() => setShareModalOpen(true)}>
+                            Members ({totalMembers})
+                        </button>
+                        <details className="room-more">
+                            <summary className="btn">More</summary>
+                            <div className="room-more-menu">
+                                <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => copyText(roomDetail.share_url || `${window.location.origin}/?room=${roomDetail.share_token}`, 'Copied room link')}
+                                >
+                                    Copy room link
+                                </button>
+                                <button type="button" className="btn" onClick={() => setFullscreen((prev) => !prev)}>
+                                    {fullscreen ? 'Exit full screen' : 'Full screen'}
+                                </button>
+                                {isAdmin && !sharedToken && (
+                                    <button type="button" className="btn btn-danger" onClick={handleDeleteRoom} disabled={deletingRoom}>
+                                        {deletingRoom ? 'Deleting…' : 'Delete room'}
+                                    </button>
+                                )}
+                            </div>
+                        </details>
+                    </div>
+                )}
             </header>
 
-            {/* 4-Step Live Readiness & Topology Pipeline Bar */}
-            {roomDetail && (
-                <div className="concord-pipeline-bar">
-                    <div className="concord-pipeline-step ready">
-                        <span className="concord-step-num">01</span>
-                        <div className="concord-step-body">
-                            <span className="concord-step-kicker">PROJECT ROLE & ACCESS</span>
-                            <strong className="concord-step-val">
-                                {projectRole.toUpperCase()} {canEdit ? '[CAN EDIT]' : '[VIEW ONLY]'}
-                            </strong>
-                        </div>
-                    </div>
-
-                    <div
-                        className="concord-pipeline-step ready"
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => setShareModalOpen(true)}
-                        onKeyDown={activateOnKey(() => setShareModalOpen(true))}
-                        style={{ cursor: 'pointer' }}
-                    >
-                        <span className="concord-step-num">02</span>
-                        <div className="concord-step-body">
-                            <span className="concord-step-kicker">UNLIMITED USERS ROSTER</span>
-                            <strong className="concord-step-val">
-                                {totalMembers} User{totalMembers === 1 ? '' : 's'} ({isAdmin ? '+ Click to Add More' : 'View Team'})
-                            </strong>
-                        </div>
-                    </div>
-
-                    <div
-                        className={`concord-pipeline-step ${hasConnectedMcp ? 'ready' : 'locked'}`}
-                        role={canEdit ? 'button' : undefined}
-                        tabIndex={canEdit ? 0 : undefined}
-                        onClick={() => canEdit && setConnectModalOpen(true)}
-                        onKeyDown={canEdit ? activateOnKey(() => setConnectModalOpen(true)) : undefined}
-                        style={{ cursor: canEdit ? 'pointer' : 'default' }}
-                    >
-                        <span className="concord-step-num">03</span>
-                        <div className="concord-step-body">
-                            <span className="concord-step-kicker">YOUR MCP GATEWAY</span>
-                            <strong className="concord-step-val">
-                                {hasConnectedMcp
-                                    ? `CONNECTED // ${myParticipants[0].device_name}`
-                                    : canEdit
-                                      ? 'NOT CONNECTED (CLICK TO CONNECT MCP)'
-                                      : 'READ-ONLY VIEWER'}
-                            </strong>
-                        </div>
-                    </div>
-
-                    <div className={`concord-pipeline-step ${totalParticipants > 0 && hasConnectedMcp ? 'ready' : 'locked'}`}>
-                        <span className="concord-step-num">04</span>
-                        <div className="concord-step-body">
-                            <span className="concord-step-kicker">GROUP PROMPTING STATUS</span>
-                            <strong className="concord-step-val">
-                                {!canEdit
-                                    ? 'LOCKED (NO_ROLE VIEW ONLY)'
-                                    : hasConnectedMcp
-                                      ? `UNLOCKED (${totalParticipants} ACTIVE AGENT${totalParticipants === 1 ? '' : 'S'})`
-                                      : 'LOCKED UNTIL MCP CONNECTED'}
-                            </strong>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {!sharedToken && !fullscreen && isAdmin && (
-                <form className="concord-new-room-bar" onSubmit={handleCreateRoom}>
+                <form className="room-new" onSubmit={handleCreateRoom}>
                     <input
                         type="text"
                         className="input"
-                        placeholder="Admin Only: Create a new multi-agent group chat project (starts with 0 default agents)..."
+                        aria-label="New room name"
+                        placeholder="New room name"
                         value={newRoomTitle}
                         onChange={(e) => setNewRoomTitle(e.target.value)}
                     />
-                    <button type="submit" className="btn btn-primary" disabled={creatingRoom}>
-                        + New Group Chat Project (Admin)
+                    <button type="submit" className="btn btn-sm" disabled={creatingRoom || !newRoomTitle.trim()}>
+                        Create room
                     </button>
                 </form>
             )}
 
-            <div className="concord-workspace-grid">
-                <ConcordGroupChat
-                    room={roomDetail}
-                    currentUser={currentUser}
-                    myParticipants={myParticipants}
-                    hasConnectedMcp={hasConnectedMcp}
-                    canEdit={canEdit}
-                    isAdmin={isAdmin}
-                    sending={sending}
-                    onSendPrompt={handleSendPrompt}
-                    onDisconnectParticipant={handleDisconnectParticipant}
-                    onOpenConnectModal={() => setConnectModalOpen(true)}
-                    onOpenRolesModal={() => setShareModalOpen(true)}
-                />
+            <div className="room-body">
+                <main className="room-agents" aria-label="Agents">
+                    <AgentBoard
+                        participants={participants}
+                        myParticipantIds={myParticipantIds}
+                        isAdmin={isAdmin}
+                        canEdit={canEdit}
+                        onDisconnect={handleDisconnectParticipant}
+                        onConnect={() => setConnectModalOpen(true)}
+                    />
+                </main>
 
-                <SharedMemoryPanel
-                    room={roomDetail}
-                    activeToken={sharedToken || roomDetail?.share_token}
-                    canEdit={canEdit}
-                    onUpdated={fetchRoom}
-                />
+                <aside className="room-side">
+                    <div className="room-tabs" role="tablist" aria-label="Room panels">
+                        {[['chat', 'Chat'], ['memory', `Shared memory (${(roomDetail?.shared_memory || []).length})`]].map(([id, label]) => (
+                            <button
+                                key={id}
+                                type="button"
+                                role="tab"
+                                aria-selected={sideTab === id}
+                                className={`room-tab${sideTab === id ? ' active' : ''}`}
+                                onClick={() => setSideTab(id)}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                    {sideTab === 'chat' ? (
+                        <RoomChat
+                            room={roomDetail}
+                            myParticipants={myParticipants}
+                            hasConnectedMcp={hasConnectedMcp}
+                            canEdit={canEdit}
+                            sending={sending}
+                            onSendPrompt={handleSendPrompt}
+                            onConnect={() => setConnectModalOpen(true)}
+                        />
+                    ) : (
+                        <SharedMemoryPanel room={roomDetail} canEdit={canEdit} onUpdated={fetchRoom} />
+                    )}
+                </aside>
             </div>
 
             <ShareRoomModal

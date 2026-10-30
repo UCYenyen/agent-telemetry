@@ -140,4 +140,52 @@ class ConcordMcpTest extends TestCase
         $this->assertStringContainsString('".agents/mcp_config.json": {"serverUrl": url}', $script);
         $this->assertStringContainsString('MCP_URL=$(python3', $script);
     }
+
+    public function test_claude_code_hook_events_show_prompt_activity_and_finish(): void
+    {
+        $room = $this->room();
+        $events = "/api/concord/mcp/{$room->mcp_token}/events?user_email=ana@dev.io&user_name=Ana&device_name=ana-laptop";
+
+        // Claude Code posts its hook JSON unchanged.
+        $this->postJson($events, ['hook_event_name' => 'UserPromptSubmit', 'cwd' => '/home/ana/app', 'prompt' => 'Add rate limiting to the login route'])
+            ->assertOk();
+
+        $agent = $room->participants()->firstOrFail();
+        $this->assertSame('Add rate limiting to the login route', $agent->current_prompt);
+        $this->assertSame('working', $agent->status);
+
+        $this->postJson($events, ['hook_event_name' => 'PreToolUse', 'cwd' => '/home/ana/app', 'tool_name' => 'Edit', 'tool_input' => ['file_path' => '/home/ana/app/routes/web.php', 'old_string' => 'secret', 'new_string' => 'secret2']])
+            ->assertOk();
+        $this->postJson($events, ['hook_event_name' => 'PreToolUse', 'tool_name' => 'Bash', 'tool_input' => ['command' => 'php artisan test', 'description' => 'Run the test suite']])
+            ->assertOk();
+
+        $agent->refresh();
+        $this->assertSame('Run the test suite', $agent->current_action);
+        $this->assertSame(['routes/web.php'], $agent->local_modified_files);
+        $this->assertSame(['prompt', 'tool', 'tool'], array_column($agent->activity, 'type'));
+        $this->assertSame('Edit routes/web.php', $agent->activity[1]['text']);
+        $this->assertStringNotContainsString('secret', json_encode($agent->activity));
+
+        $this->postJson($events, ['hook_event_name' => 'Stop'])->assertOk();
+        $agent->refresh();
+        $this->assertSame('idle', $agent->status);
+        $this->assertSame('Add rate limiting to the login route', $agent->current_prompt);
+
+        $this->postJson("/api/concord/mcp/{$room->mcp_token}/events", ['event' => 'prompt', 'prompt' => 'x'])->assertStatus(422);
+    }
+
+    public function test_report_thinking_prompt_from_other_clients_reaches_the_board(): void
+    {
+        $room = $this->room();
+
+        $this->postJson($this->mcpUrl($room), ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call', 'params' => [
+            'name' => 'report_thinking',
+            'arguments' => ['prompt' => 'Write the signup form', 'current_action' => 'Reading the auth controller'],
+        ]])->assertJsonPath('result.isError', false);
+
+        $agent = $room->participants()->firstOrFail();
+        $this->assertSame('Write the signup form', $agent->current_prompt);
+        $this->assertSame('Reading the auth controller', $agent->current_action);
+        $this->assertSame('working', $agent->status);
+    }
 }

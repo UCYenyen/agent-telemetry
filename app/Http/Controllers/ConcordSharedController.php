@@ -435,6 +435,14 @@ class ConcordSharedController extends Controller
         return $server->handle($request, $room);
     }
 
+    public function mcpEvent(Request $request, string $mcpToken, ConcordMcpServer $server): JsonResponse
+    {
+        $room = ConcordRoom::query()->where('mcp_token', $mcpToken)->first();
+        abort_unless($room, 404);
+
+        return $server->handleEvent($request, $room);
+    }
+
     /**
      * Streamable HTTP clients may open a GET event stream or DELETE their session;
      * this server is stateless and answers over POST only, which the spec signals with 405.

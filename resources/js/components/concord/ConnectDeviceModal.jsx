@@ -85,11 +85,20 @@ export default function ConnectDeviceModal({
     const personalizedMcpUrl = `${mcpBaseEndpoint}?${mcpQuery}`;
 
     const mcpJson = (server) => JSON.stringify({ mcpServers: { concord: server } }, null, 2);
+    const eventsUrl = personalizedMcpUrl.replace('?', '/events?');
+    const hookCommand = { type: 'command', command: `curl -s -m 3 -X POST -H 'Content-Type: application/json' --data-binary @- '${eventsUrl}' >/dev/null 2>&1 || true`, timeout: 5 };
+    const claudeHooksJson = JSON.stringify({
+        hooks: {
+            UserPromptSubmit: [{ hooks: [hookCommand] }],
+            PreToolUse: [{ matcher: '*', hooks: [hookCommand] }],
+            Stop: [{ hooks: [hookCommand] }],
+        },
+    }, null, 2);
     const clientConfigs = {
         claude: {
             label: 'Claude Code',
-            hint: 'Run in your project, or save as .mcp.json in the repo root.',
-            text: `claude mcp add --transport http concord "${personalizedMcpUrl}"\n\n# or .mcp.json\n${mcpJson({ type: 'http', url: personalizedMcpUrl })}`,
+            hint: 'Run in your project. The hooks block (in .claude/settings.local.json) shows your prompts and tool use live on the agent board; the one-line connector installs it for you.',
+            text: `claude mcp add --transport http concord "${personalizedMcpUrl}"\n\n# .claude/settings.local.json (live prompt + activity)\n${claudeHooksJson}`,
         },
         antigravity: {
             label: 'Antigravity',

@@ -21,7 +21,8 @@ class ConcordMcpServer
 You are connected to a Concord room: a shared memory bank and group chat used by several people's coding agents on different computers.
 - Call get_shared_memory before starting work, so you build on decisions, API contracts and file claims other agents have already made.
 - Call write_shared_memory whenever you settle something other agents depend on (an interface, a naming decision, a file you now own, a finished task). Keep each entry one or two sentences under a stable key.
-- Use report_thinking to show what you are doing, and send_group_message to talk to the other people and agents in the room.
+- When your user gives you a new request, call report_thinking with prompt set to that request (verbatim or a faithful one-line summary), and update current_action as you work, so the room can see what every agent is doing.
+- Use send_group_message to talk to the other people and agents in the room.
 - All file edits happen on your own computer; the room only holds shared context.
 TXT;
 
@@ -142,7 +143,8 @@ TXT;
                 'inputSchema' => [
                     'type' => 'object',
                     'properties' => [
-                        'status' => $string + ['description' => 'thinking, editing_local, idle'],
+                        'prompt' => $string + ['description' => 'The request your user just gave you. Send it once when you start on a new request.'],
+                        'status' => $string + ['description' => 'working or idle'],
                         'current_thought' => $string,
                         'current_action' => $string,
                         'thinking_steps' => ['type' => 'array', 'items' => $string],
@@ -222,13 +224,17 @@ TXT;
                 }
 
                 $participant->update(array_filter([
-                    'status' => $args['status'] ?? 'thinking',
                     'current_thought' => $args['current_thought'] ?? null,
-                    'current_action' => $args['current_action'] ?? null,
                     'thinking_steps' => $args['thinking_steps'] ?? null,
                     'local_modified_files' => $args['local_modified_files'] ?? null,
-                    'last_seen_at' => now(),
                 ], fn ($value) => $value !== null));
+
+                $idle = in_array($args['status'] ?? '', ['idle', 'done'], true);
+                $participant->recordActivity(
+                    $idle ? 'done' : (isset($args['prompt']) ? 'prompt' : 'status'),
+                    (string) ($args['current_action'] ?? ($idle ? 'Finished' : (isset($args['prompt']) ? 'Started a new request' : ''))),
+                    isset($args['prompt']) ? (string) $args['prompt'] : null,
+                );
 
                 return $this->text($id, 'Status updated.');
 
@@ -245,6 +251,84 @@ TXT;
         }
 
         return $this->error($id, -32602, 'Unknown tool: '.($params['name'] ?? ''));
+    }
+
+    /**
+     * Lifecycle events from agent hooks (Claude Code posts its hook JSON here unchanged)
+     * or any client sending {"event": "prompt|tool|done", "prompt": "...", "text": "..."}.
+     */
+    public function handleEvent(Request $request, ConcordRoom $room): JsonResponse
+    {
+        $caller = $this->identifyCaller($request, $room);
+        if (! $caller) {
+            return $this->json(['ok' => false, 'message' => 'Add user_email or user_name to the URL query string.'], 422);
+        }
+
+        $hookEvent = (string) $request->input('hook_event_name', '');
+        $event = (string) $request->input('event', match ($hookEvent) {
+            'UserPromptSubmit' => 'prompt',
+            'PreToolUse' => 'tool',
+            'Stop', 'SubagentStop', 'SessionEnd' => 'done',
+            default => 'status',
+        });
+
+        switch ($event) {
+            case 'prompt':
+                $caller->recordActivity('prompt', 'Started a new request', (string) $request->input('prompt', ''));
+                break;
+
+            case 'tool':
+                $toolName = (string) $request->input('tool_name', 'Tool');
+                $input = $request->input('tool_input');
+                $caller->recordActivity('tool', (string) ($request->input('text') ?: $this->describeTool($toolName, is_array($input) ? $input : [], (string) $request->input('cwd', ''))));
+
+                $file = is_array($input) ? ($input['file_path'] ?? $input['notebook_path'] ?? null) : null;
+                if ($file && in_array($toolName, ['Edit', 'MultiEdit', 'Write', 'NotebookEdit'], true)) {
+                    $files = array_values(array_unique([...($caller->local_modified_files ?? []), $this->relativePath((string) $file, (string) $request->input('cwd', ''))]));
+                    $caller->update(['local_modified_files' => array_slice($files, -20)]);
+                }
+                break;
+
+            case 'done':
+                $caller->recordActivity('done', (string) ($request->input('text') ?: 'Finished'));
+                break;
+
+            default:
+                $caller->recordActivity('status', (string) $request->input('text', ''));
+        }
+
+        return $this->json(['ok' => true]);
+    }
+
+    /**
+     * One readable line per tool call. Never stores file contents or edit bodies.
+     */
+    private function describeTool(string $tool, array $input, string $cwd): string
+    {
+        $path = fn (string $key) => $this->relativePath((string) ($input[$key] ?? ''), $cwd);
+        $clip = fn (string $value) => mb_strimwidth(preg_replace('/\s+/', ' ', $value), 0, 140, '…');
+
+        return match (true) {
+            in_array($tool, ['Read', 'Edit', 'MultiEdit', 'Write'], true) => "{$tool} {$path('file_path')}",
+            $tool === 'NotebookEdit' => "Edit notebook {$path('notebook_path')}",
+            $tool === 'Bash' => isset($input['description']) ? $clip((string) $input['description']) : 'Run '.$clip((string) ($input['command'] ?? '')),
+            in_array($tool, ['Grep', 'Glob'], true) => "Search {$clip((string) ($input['pattern'] ?? ''))}",
+            $tool === 'WebFetch' => "Fetch {$clip((string) ($input['url'] ?? ''))}",
+            $tool === 'WebSearch' => "Web search {$clip((string) ($input['query'] ?? ''))}",
+            in_array($tool, ['Task', 'Agent'], true) => 'Subagent: '.$clip((string) ($input['description'] ?? '')),
+            $tool === 'TodoWrite' => 'Update todo list',
+            str_starts_with($tool, 'mcp__') => 'MCP '.str_replace('__', ' / ', substr($tool, 5)),
+            default => $tool,
+        };
+    }
+
+    private function relativePath(string $path, string $cwd): string
+    {
+        if ($cwd !== '' && str_starts_with($path, rtrim($cwd, '/').'/')) {
+            return substr($path, strlen(rtrim($cwd, '/')) + 1);
+        }
+
+        return $path;
     }
 
     /**
