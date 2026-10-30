@@ -1301,3 +1301,36 @@
     display: block;
     margin: 0.75rem 0 0.4rem;
 }
+
+.concord-client-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.6rem 0 0.4rem;
+}
+
+.concord-client-tab {
+    min-height: 28px;
+    padding: 0 0.7rem;
+    font-size: 0.72rem;
+    background: var(--surface-2);
+    color: var(--text-2);
+    border: 1px solid var(--border-strong);
+}
+
+.concord-client-tab:hover {
+    color: var(--text);
+    transform: none;
+}
+
+.concord-client-tab.active {
+    background: var(--claude-dim);
+    color: var(--claude);
+    border-color: var(--claude);
+}
+
+.concord-client-hint {
+    margin: 0 0 0.45rem;
+    font-size: 0.78rem;
+    color: var(--text-2);
+}

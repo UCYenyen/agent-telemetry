@@ -32,6 +32,7 @@ export default function ConnectDeviceModal({
     const [submitting, setSubmitting] = useState(false);
     const [handshakeResult, setHandshakeResult] = useState(null);
     const [selectedParticipantId, setSelectedParticipantId] = useState('');
+    const [configClient, setConfigClient] = useState('claude');
 
     useEffect(() => {
         if (!open) return;
@@ -83,14 +84,40 @@ export default function ConnectDeviceModal({
     }).toString();
     const personalizedMcpUrl = `${mcpBaseEndpoint}?${mcpQuery}`;
 
-    const mcpConfigJson = JSON.stringify({
-        mcpServers: {
-            'concord-vps-shared-memory': {
-                type: 'http',
-                url: personalizedMcpUrl,
-            },
+    const mcpJson = (server) => JSON.stringify({ mcpServers: { concord: server } }, null, 2);
+    const clientConfigs = {
+        claude: {
+            label: 'Claude Code',
+            hint: 'Run in your project, or save as .mcp.json in the repo root.',
+            text: `claude mcp add --transport http concord "${personalizedMcpUrl}"\n\n# or .mcp.json\n${mcpJson({ type: 'http', url: personalizedMcpUrl })}`,
         },
-    }, null, 2);
+        antigravity: {
+            label: 'Antigravity',
+            hint: 'Antigravity CLI: run the command. Antigravity app: Agent panel > MCP Servers > Manage > View raw config.',
+            text: `agy mcp add concord "${personalizedMcpUrl}"\n\n# or mcp_config.json\n${mcpJson({ serverUrl: personalizedMcpUrl })}`,
+        },
+        gemini: {
+            label: 'Gemini CLI',
+            hint: 'Add to .gemini/settings.json in the project or ~/.gemini/settings.json.',
+            text: mcpJson({ httpUrl: personalizedMcpUrl }),
+        },
+        codex: {
+            label: 'Codex',
+            hint: 'Run once; Codex stores it in ~/.codex/config.toml.',
+            text: `codex mcp add concord --url "${personalizedMcpUrl}"\n\n# or ~/.codex/config.toml\n[mcp_servers.concord]\nurl = "${personalizedMcpUrl}"`,
+        },
+        cursor: {
+            label: 'Cursor',
+            hint: 'Save as .cursor/mcp.json in the project or ~/.cursor/mcp.json.',
+            text: mcpJson({ url: personalizedMcpUrl }),
+        },
+        other: {
+            label: 'Other (stdio)',
+            hint: 'For clients that only launch local commands (e.g. Claude Desktop): bridge with mcp-remote.',
+            text: mcpJson({ command: 'npx', args: ['-y', 'mcp-remote', personalizedMcpUrl] }),
+        },
+    };
+    const activeConfig = clientConfigs[configClient] || clientConfigs.claude;
 
     const copyText = async (text, label) => {
         try {
@@ -234,21 +261,36 @@ export default function ConnectDeviceModal({
 
                         <div className="concord-code-box">
                             <div className="concord-code-head">
-                                <span>OPTION A: REMOTE MCP (.mcp.json FOR CLAUDE CODE / ANTIGRAVITY / CURSOR)</span>
+                                <span>Option A: add the MCP server to your agent</span>
                                 <button
                                     type="button"
                                     className="btn btn-xs btn-primary"
-                                    onClick={() => copyText(mcpConfigJson, 'Copied personalized .mcp.json configuration!')}
+                                    onClick={() => copyText(activeConfig.text, `Copied ${activeConfig.label} MCP config`)}
                                 >
-                                    Copy .mcp.json
+                                    Copy
                                 </button>
                             </div>
-                            <pre className="concord-code-pre">{mcpConfigJson}</pre>
+                            <div className="concord-client-tabs" role="tablist" aria-label="Agent client">
+                                {Object.entries(clientConfigs).map(([id, config]) => (
+                                    <button
+                                        key={id}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={configClient === id}
+                                        className={`concord-client-tab${configClient === id ? ' active' : ''}`}
+                                        onClick={() => setConfigClient(id)}
+                                    >
+                                        {config.label}
+                                    </button>
+                                ))}
+                            </div>
+                            <p className="concord-client-hint">{activeConfig.hint}</p>
+                            <pre className="concord-code-pre">{activeConfig.text}</pre>
                         </div>
 
                         <div className="concord-code-box" style={{ marginTop: '0.75rem' }}>
                             <div className="concord-code-head">
-                                <span>OPTION B: 1-LINE TERMINAL MCP + LOCAL EDIT CONNECTOR</span>
+                                <span>Option B: one-line connector (configures Claude Code, Cursor, Gemini CLI and Antigravity, then listens for tasks)</span>
                                 <button
                                     type="button"
                                     className="btn btn-xs btn-emerald"

@@ -8,6 +8,7 @@ use App\Models\ConcordRoom;
 use App\Models\ConcordRoomInvite;
 use App\Models\User;
 use App\Services\ConcordHubService;
+use App\Services\ConcordMcpServer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -420,262 +421,27 @@ class ConcordSharedController extends Controller
         ]);
     }
 
-    public function mcp(Request $request, string $mcpToken, ConcordHubService $hub): JsonResponse
+    public function mcp(Request $request, string $mcpToken, ConcordMcpServer $server): JsonResponse|Response
     {
         $room = ConcordRoom::query()->where('mcp_token', $mcpToken)->first();
         if (! $room) {
             return response()->json([
                 'jsonrpc' => '2.0',
+                'id' => $request->json('id'),
                 'error' => ['code' => -32001, 'message' => 'Invalid Concord MCP token'],
-                'id' => $request->input('id'),
             ], 404);
         }
 
-        $method = $request->input('method', 'tools/list');
-        $id = $request->input('id', 1);
-        $params = $request->input('params', []);
+        return $server->handle($request, $room);
+    }
 
-        // Auto-register or heartbeat MCP participant if user identity is included in query or params
-        $mcpEmail = strtolower(trim((string) ($request->query('user_email') ?? ($params['user_email'] ?? ''))));
-        $mcpUser = trim((string) ($request->query('user_name') ?? ($params['user_name'] ?? '')));
-        $mcpDevice = trim((string) ($request->query('device_name') ?? ($params['device_name'] ?? '')));
-
-        if ($mcpEmail !== '' || $mcpUser !== '') {
-            $resolvedUser = $mcpUser ?: explode('@', $mcpEmail)[0];
-            $resolvedDevice = $mcpDevice ?: ($resolvedUser.'-MCP-Workstation');
-            $provider = (string) ($params['provider'] ?? 'claude');
-            $model = (string) ($params['model'] ?? 'claude-sonnet-5-5-high');
-            $colors = ['#10b981', '#6366f1', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6'];
-
-            $existing = $room->participants()
-                ->when($mcpEmail !== '', fn ($q) => $q->whereRaw('LOWER(account_email) = ?', [$mcpEmail]))
-                ->when($mcpEmail === '' && $mcpUser !== '', fn ($q) => $q->whereRaw('LOWER(user_name) = ?', [strtolower($mcpUser)]))
-                ->first();
-
-            if ($existing) {
-                $existing->update([
-                    'execution_mode' => 'mcp_connected',
-                    'device_name' => $mcpDevice ?: $existing->device_name,
-                    'last_seen_at' => now(),
-                ]);
-            } else {
-                $room->participants()->create([
-                    'kind' => 'agent',
-                    'name' => $resolvedUser.' '.ucfirst($provider).' MCP Agent',
-                    'user_name' => $resolvedUser,
-                    'account_email' => $mcpEmail ?: (strtolower(preg_replace('/[^a-zA-Z0-9]+/', '.', $resolvedUser)).'@local.mcp'),
-                    'device_name' => $resolvedDevice,
-                    'execution_mode' => 'mcp_connected',
-                    'provider' => $provider,
-                    'model' => $model,
-                    'avatar' => 'MCP',
-                    'color' => $colors[$room->participants()->count() % count($colors)],
-                    'role_prompt' => 'Local MCP Workspace Agent',
-                    'status' => 'idle',
-                    'current_thought' => 'Connected via MCP JSON-RPC protocol from '.$resolvedDevice,
-                    'current_action' => 'MCP Connected ('.$resolvedDevice.')',
-                    'thinking_steps' => ['MCP JSON-RPC 2024-11-05 handshake initialized from '.$resolvedDevice],
-                    'claimed_files' => [],
-                    'local_modified_files' => [],
-                    'last_seen_at' => now(),
-                ]);
-            }
-        }
-
-        if ($method === 'initialize') {
-            return response()->json([
-                'jsonrpc' => '2.0',
-                'id' => $id,
-                'result' => [
-                    'protocolVersion' => '2024-11-05',
-                    'serverInfo' => [
-                        'name' => 'concord-vps-shared-memory-hub',
-                        'version' => '2.0.0',
-                        'room' => $room->title,
-                    ],
-                    'capabilities' => [
-                        'tools' => (object) [],
-                    ],
-                ],
-            ]);
-        }
-
-        if ($method === 'tools/list') {
-            return response()->json([
-                'jsonrpc' => '2.0',
-                'id' => $id,
-                'result' => [
-                    'tools' => [
-                        [
-                            'name' => 'get_shared_memory',
-                            'description' => 'Read the centralized VPS shared memory bank, active cross-device file claims, recent group chat messages, and pending local computer tasks.',
-                            'inputSchema' => ['type' => 'object', 'properties' => (object) []],
-                        ],
-                        [
-                            'name' => 'write_shared_memory',
-                            'description' => 'Write an architectural decision, API contract, or shared context key to the VPS shared memory bank so all connected agents see it immediately.',
-                            'inputSchema' => [
-                                'type' => 'object',
-                                'properties' => [
-                                    'key' => ['type' => 'string'],
-                                    'category' => ['type' => 'string'],
-                                    'content' => ['type' => 'string'],
-                                    'author' => ['type' => 'string'],
-                                ],
-                                'required' => ['content'],
-                            ],
-                        ],
-                        [
-                            'name' => 'send_group_message',
-                            'description' => 'Post a message to the multi-agent group chat on the VPS and optionally hand off local workspace edits to another user computer.',
-                            'inputSchema' => [
-                                'type' => 'object',
-                                'properties' => [
-                                    'sender_name' => ['type' => 'string'],
-                                    'sender_device' => ['type' => 'string'],
-                                    'target_agent' => ['type' => 'string'],
-                                    'body' => ['type' => 'string'],
-                                ],
-                                'required' => ['body'],
-                            ],
-                        ],
-                        [
-                            'name' => 'report_thinking',
-                            'description' => 'Stream live agent thinking steps and local file edits from your local computer to the VPS group chat visualizer.',
-                            'inputSchema' => [
-                                'type' => 'object',
-                                'properties' => [
-                                    'participant_id' => ['type' => 'string'],
-                                    'status' => ['type' => 'string'],
-                                    'current_thought' => ['type' => 'string'],
-                                    'current_action' => ['type' => 'string'],
-                                    'thinking_steps' => ['type' => 'array', 'items' => ['type' => 'string']],
-                                    'local_modified_files' => ['type' => 'array', 'items' => ['type' => 'string']],
-                                ],
-                            ],
-                        ],
-                        [
-                            'name' => 'pull_local_tasks',
-                            'description' => 'Pull queued file-edit instructions targeting your local computer from the VPS hub.',
-                            'inputSchema' => [
-                                'type' => 'object',
-                                'properties' => [
-                                    'participant_id' => ['type' => 'string'],
-                                    'device_name' => ['type' => 'string'],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ]);
-        }
-
-        if ($method === 'tools/call') {
-            $toolName = $params['name'] ?? '';
-            $args = $params['arguments'] ?? [];
-
-            if ($toolName === 'get_shared_memory') {
-                return response()->json([
-                    'jsonrpc' => '2.0',
-                    'id' => $id,
-                    'result' => [
-                        'content' => [[
-                            'type' => 'text',
-                            'text' => json_encode([
-                                'room' => $room->title,
-                                'shared_memory' => $room->shared_memory,
-                                'active_claims' => $room->active_claims,
-                                'participants' => $room->participants()->get(['id', 'user_name', 'device_name', 'name', 'model', 'status', 'current_thought']),
-                                'recent_messages' => $room->messages()->latest('id')->limit(10)->get(['sender_name', 'sender_device', 'kind', 'content']),
-                            ], JSON_PRETTY_PRINT),
-                        ]],
-                    ],
-                ]);
-            }
-
-            if ($toolName === 'write_shared_memory') {
-                $record = $hub->upsertMemory($room, [
-                    'key' => $args['key'] ?? 'mcp_note',
-                    'category' => $args['category'] ?? 'decision',
-                    'content' => $args['content'] ?? $args['value'] ?? '',
-                    'author_agent' => $args['author'] ?? 'Remote MCP Agent',
-                    'author_user' => $args['author'] ?? 'Remote MCP User',
-                ]);
-
-                return response()->json([
-                    'jsonrpc' => '2.0',
-                    'id' => $id,
-                    'result' => [
-                        'content' => [['type' => 'text', 'text' => 'Updated VPS shared memory key: '.$record['key']]],
-                    ],
-                ]);
-            }
-
-            if ($toolName === 'send_group_message') {
-                $hub->sendPrompt($room, [
-                    'sender_name' => $args['sender_name'] ?? 'Remote MCP Agent',
-                    'sender_device' => $args['sender_device'] ?? 'Local Computer via MCP',
-                    'target_agent' => $args['target_agent'] ?? 'all',
-                    'content' => $args['body'] ?? $args['content'] ?? '',
-                ]);
-
-                return response()->json([
-                    'jsonrpc' => '2.0',
-                    'id' => $id,
-                    'result' => [
-                        'content' => [['type' => 'text', 'text' => 'Posted group chat message and triggered agent coordination.']],
-                    ],
-                ]);
-            }
-
-            if ($toolName === 'report_thinking') {
-                $participant = ! empty($args['participant_id'])
-                    ? $room->participants()->whereKey($args['participant_id'])->first()
-                    : $room->participants()->first();
-
-                if ($participant) {
-                    $participant->update(array_filter([
-                        'status' => $args['status'] ?? 'thinking',
-                        'current_thought' => $args['current_thought'] ?? null,
-                        'current_action' => $args['current_action'] ?? null,
-                        'thinking_steps' => $args['thinking_steps'] ?? null,
-                        'local_modified_files' => $args['local_modified_files'] ?? null,
-                        'last_seen_at' => now(),
-                    ], fn ($v) => $v !== null));
-                }
-
-                return response()->json([
-                    'jsonrpc' => '2.0',
-                    'id' => $id,
-                    'result' => [
-                        'content' => [['type' => 'text', 'text' => 'Live thinking telemetry synced to VPS visualizer.']],
-                    ],
-                ]);
-            }
-
-            if ($toolName === 'pull_local_tasks') {
-                $task = $room->localTasks()
-                    ->where('status', 'queued')
-                    ->when(! empty($args['participant_id']), fn ($q) => $q->where('target_participant_id', $args['participant_id']))
-                    ->when(! empty($args['device_name']), fn ($q) => $q->where('target_device', $args['device_name']))
-                    ->oldest('created_at')
-                    ->first();
-
-                return response()->json([
-                    'jsonrpc' => '2.0',
-                    'id' => $id,
-                    'result' => [
-                        'content' => [['type' => 'text', 'text' => json_encode($task)]],
-                    ],
-                ]);
-            }
-        }
-
-        return response()->json([
-            'jsonrpc' => '2.0',
-            'id' => $id,
-            'error' => ['code' => -32601, 'message' => 'Unsupported MCP method: '.$method],
-        ], 400);
+    /**
+     * Streamable HTTP clients may open a GET event stream or DELETE their session;
+     * this server is stateless and answers over POST only, which the spec signals with 405.
+     */
+    public function mcpMethodNotAllowed(): Response
+    {
+        return response('', 405, ['Allow' => 'POST']);
     }
 
     /**

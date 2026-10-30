@@ -34,6 +34,7 @@ Route::prefix('api/concord')->group(function () {
     Route::get('shared/{token}/tasks/pull', [ConcordSharedController::class, 'pullTask']);
     Route::post('shared/{token}/tasks/{task}/complete', [ConcordSharedController::class, 'completeTask']);
     Route::post('mcp/{mcpToken}', [ConcordSharedController::class, 'mcp']);
+    Route::match(['get', 'delete'], 'mcp/{mcpToken}', [ConcordSharedController::class, 'mcpMethodNotAllowed']);
 });
 
 Route::middleware(RequirePassword::class)->group(function () {

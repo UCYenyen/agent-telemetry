@@ -609,48 +609,75 @@ class ConcordHubService
         ?string $userEmail = null,
         ?string $userName = null
     ): string {
-        $shareToken = $room->share_token;
-        $mcpToken = $room->mcp_token;
-        $roomTitle = addslashes($room->title);
-        $defaultEmail = addslashes((string) ($userEmail ?? ''));
-        $defaultUser = addslashes((string) ($userName ?? ''));
+        // Every request-supplied value is emitted single-quoted via escapeshellarg: this script
+        // is piped straight into bash, so a crafted ?user= or ?email= must never expand.
+        $shareToken = escapeshellarg($room->share_token);
+        $mcpToken = escapeshellarg($room->mcp_token);
+        $hubUrl = escapeshellarg($baseUrl);
+        $plainTitle = trim(preg_replace('/[\x00-\x1F\x7F]+/', ' ', $room->title));
+        $roomTitle = escapeshellarg($plainTitle);
+        $commentTitle = str_replace(['$', '`', '\\'], '', $plainTitle);
+        $defaultEmail = escapeshellarg((string) ($userEmail ?? ''));
+        $defaultUser = escapeshellarg((string) ($userName ?? ''));
+        $participantId = escapeshellarg((string) ($participantId ?? ''));
 
         return <<<BASH
 #!/usr/bin/env bash
 # ==============================================================================
-# CONCORD LOCAL MCP & DEVICE CONNECTOR - {$roomTitle}
-# Central Shared Memory & Group Chat: {$baseUrl}
-# File Edits & Agent Execution: THIS LOCAL COMPUTER (NEVER ON THE VPS)
+# CONCORD LOCAL MCP & DEVICE CONNECTOR - {$commentTitle}
+# Shared memory and group chat live on the hub; file edits run on THIS computer.
 # ==============================================================================
 set -euo pipefail
 
-HUB_URL="{$baseUrl}"
-SHARE_TOKEN="{$shareToken}"
-MCP_TOKEN="{$mcpToken}"
-PARTICIPANT_ID="{$participantId}"
-USER_NAME="\${CONCORD_USER:-{$defaultUser}}"
+HUB_URL={$hubUrl}
+SHARE_TOKEN={$shareToken}
+MCP_TOKEN={$mcpToken}
+ROOM_TITLE={$roomTitle}
+PARTICIPANT_ID={$participantId}
+DEFAULT_USER={$defaultUser}
+DEFAULT_EMAIL={$defaultEmail}
+USER_NAME="\${CONCORD_USER:-\$DEFAULT_USER}"
 if [ -z "\${USER_NAME}" ]; then USER_NAME="\$(whoami)"; fi
-USER_EMAIL="\${CONCORD_EMAIL:-{$defaultEmail}}"
+USER_EMAIL="\${CONCORD_EMAIL:-\$DEFAULT_EMAIL}"
 DEVICE_NAME="\${CONCORD_DEVICE:-\$(hostname)}"
 AGENT_CLI="\${CONCORD_AGENT:-claude}"
 MODEL_ID="\${CONCORD_MODEL:-claude-sonnet-5-5-high}"
 
-echo "[MCP] Connecting local computer [\${DEVICE_NAME}] (User: \${USER_NAME} <\${USER_EMAIL}>) to Concord Room: {$roomTitle}..."
+echo "[MCP] Connecting \${DEVICE_NAME} (\${USER_NAME} <\${USER_EMAIL}>) to Concord room: \${ROOM_TITLE}"
 
-# 1. Configure Remote Concord MCP in current repository so local Claude Code / Antigravity / Cursor share VPS memory
-mkdir -p .agents .cursor
-cat > .mcp.json <<EOF
-{
-  "mcpServers": {
-    "concord-shared-memory": {
-      "type": "http",
-      "url": "\${HUB_URL}/api/concord/mcp/\${MCP_TOKEN}?user_email=\${USER_EMAIL}&user_name=\${USER_NAME}&device_name=\${DEVICE_NAME}"
-    }
-  }
+# 1. Register the Concord MCP server for every agent client in this repository.
+#    Existing config files are merged, never overwritten.
+MCP_URL=\$(python3 -c 'import sys, urllib.parse as u; print(sys.argv[1] + "/api/concord/mcp/" + sys.argv[2] + "?" + u.urlencode({"user_email": sys.argv[3], "user_name": sys.argv[4], "device_name": sys.argv[5]}))' "\${HUB_URL}" "\${MCP_TOKEN}" "\${USER_EMAIL}" "\${USER_NAME}" "\${DEVICE_NAME}")
+
+python3 - "\${MCP_URL}" <<'PY'
+import json, os, sys
+
+url = sys.argv[1]
+targets = {
+    ".mcp.json": {"type": "http", "url": url},                 # Claude Code
+    ".cursor/mcp.json": {"url": url},                           # Cursor
+    ".gemini/settings.json": {"httpUrl": url},                  # Gemini CLI
+    ".agents/mcp_config.json": {"serverUrl": url},              # Antigravity
 }
-EOF
-cp .mcp.json .agents/mcp_config.json 2>/dev/null || true
-cp .mcp.json .cursor/mcp.json 2>/dev/null || true
+for path, server in targets.items():
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    data = {}
+    if os.path.exists(path):
+        try:
+            with open(path) as handle:
+                data = json.load(handle)
+        except (OSError, ValueError):
+            print(f"[SKIP] {path} is not valid JSON; add the concord server by hand")
+            continue
+    data.setdefault("mcpServers", {})["concord"] = server
+    with open(path, "w") as handle:
+        json.dump(data, handle, indent=2)
+    print(f"[MCP] Registered concord server in {path}")
+PY
+
+echo "[MCP] Antigravity CLI: agy mcp add concord \"\${MCP_URL}\""
+echo "[MCP] Codex CLI: codex mcp add concord --url \"\${MCP_URL}\""
+echo "[MCP] stdio-only clients: npx -y mcp-remote \"\${MCP_URL}\""
 
 # 2. Perform MCP JSON-RPC Handshake & Register this local computer in the VPS Group Chat room
 curl -s -X POST "\${HUB_URL}/api/concord/mcp/\${MCP_TOKEN}" \\
