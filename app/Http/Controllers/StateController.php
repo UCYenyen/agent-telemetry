@@ -11,10 +11,11 @@ use App\Models\Setting;
 use App\Services\ConcordHubService;
 use App\Services\OpenRouter;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class StateController extends Controller
 {
-    public function __invoke(OpenRouter $openRouter, ConcordHubService $concordHub): JsonResponse
+    public function __invoke(Request $request, OpenRouter $openRouter, ConcordHubService $concordHub): JsonResponse
     {
         $concordHub->ensureDefaultRoom();
         $globalKey = trim(Setting::read('openrouter')['api_key'] ?? '');
@@ -33,6 +34,11 @@ class StateController extends Controller
         });
 
         return response()->json([
+            'user' => $request->session()->get('agent_host.user', [
+                'name' => 'UCYenyen',
+                'username' => 'ucyenyen',
+                'email' => 'bryankunhahaha@gmail.com',
+            ]),
             'sessions' => AgentSession::withCount('messages')->oldest()->get(),
             'defaults' => Setting::read('defaults'),
             'models' => Setting::read('models'),

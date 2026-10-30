@@ -12,13 +12,19 @@ async function request(method, url, body) {
     });
 
     if (response.status === 401) {
-        window.location.assign('/login');
+        const params = new URLSearchParams(window.location.search);
+        if (!params.get('room') && !params.get('invite')) {
+            window.location.assign('/login');
+        }
     }
 
     const data = response.status === 204 ? null : await response.json().catch(() => null);
 
     if (!response.ok) {
-        throw new Error(data?.message || `Request failed (${response.status})`);
+        const error = new Error(data?.message || `Request failed (${response.status})`);
+        error.status = response.status;
+        error.data = data;
+        throw error;
     }
 
     return data;

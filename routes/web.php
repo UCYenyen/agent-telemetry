@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('login', [LoginController::class, 'create'])->name('login');
 Route::post('login', [LoginController::class, 'store'])->middleware('throttle:5,1');
+Route::get('register', [LoginController::class, 'create'])->name('register');
+Route::post('register', [LoginController::class, 'register'])->middleware('throttle:10,1');
 Route::post('logout', [LoginController::class, 'destroy'])->name('logout');
 
 Route::get('connect/{token}', [ConcordSharedController::class, 'connectorScript']);

@@ -11,6 +11,9 @@ export function AppProvider({ children }) {
     const [message, setMessage] = useState(null);
     const toastTimer = useRef(null);
 
+    const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const sharedToken = searchParams?.get('invite') || searchParams?.get('room') || null;
+
     const reload = useCallback(async () => {
         try {
             setState(await api.get('/api/state'));
@@ -47,7 +50,7 @@ export function AppProvider({ children }) {
     useInterval(reload, 4000);
 
     return (
-        <AppContext.Provider value={{ state, syncedAt, reload, toast, run }}>
+        <AppContext.Provider value={{ state, syncedAt, reload, toast, run, sharedToken }}>
             {children}
             <Toast message={message} />
         </AppContext.Provider>

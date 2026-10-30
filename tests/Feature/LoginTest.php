@@ -55,4 +55,35 @@ class LoginTest extends TestCase
 
         $this->getJson('/api/state')->assertUnauthorized();
     }
+
+    public function test_user_can_sign_up_with_name_email_phone_and_password_and_login_by_username_or_email(): void
+    {
+        $this->post('/register', [
+            'name' => 'bryan_kun',
+            'email' => 'bryan@sembakobayi.com',
+            'phone' => '+628123456789',
+            'password' => 'secret1234',
+        ])->assertRedirect('/');
+
+        $this->assertTrue(session('agent_host.authenticated'));
+        $this->assertSame('bryan@sembakobayi.com', session('agent_host.user.email'));
+
+        // Log out
+        $this->postJson('/logout')->assertNoContent();
+
+        // Log in using username + password
+        $this->post('/login', [
+            'login' => 'bryan_kun',
+            'password' => 'secret1234',
+        ])->assertRedirect('/');
+        $this->assertTrue(session('agent_host.authenticated'));
+
+        // Log out and log in using email + password
+        $this->postJson('/logout')->assertNoContent();
+        $this->post('/login', [
+            'login' => 'bryan@sembakobayi.com',
+            'password' => 'secret1234',
+        ])->assertRedirect('/');
+        $this->assertTrue(session('agent_host.authenticated'));
+    }
 }
