@@ -5,7 +5,7 @@ import AgentBadge from '../common/AgentBadge';
 import OpenRouterToggle from '../common/OpenRouterToggle';
 import FailoverBadge from './FailoverBadge';
 
-const STATE_LABELS = { fallback_active: 'FAILOVER ACTIVE', working: 'EXECUTING…' };
+const STATE_LABELS = { fallback_active: 'FAILOVER ACTIVE', working: 'THINKING & EXECUTING…' };
 
 export default function SessionCard({ session, onOpenConsole }) {
     const { run, toast } = useApp();
@@ -47,11 +47,16 @@ export default function SessionCard({ session, onOpenConsole }) {
                             {session.messages_count} MSG{session.messages_count > 1 ? 'S' : ''}
                         </span>
                     )}
+                    {session.last_prompt && (
+                        <span className="spec-chip" title={session.last_prompt}>
+                            ✻ {session.last_prompt.slice(0, 42)}{session.last_prompt.length > 42 ? '…' : ''}
+                        </span>
+                    )}
                 </div>
             </div>
             <div className="actions">
                 <button type="button" className="prompt-trigger" onClick={() => onOpenConsole(session.id)}>
-                    💬 OPENWEBUI PROMPT
+                    ✦ CLAUDE CODE PROMPT
                 </button>
                 {session.remote_url && (
                     <a href={session.remote_url} target="_blank" rel="noreferrer" className="btn ghost">

@@ -38,7 +38,7 @@ class AgentSessionManager
 
     private const DIALOG = '/\[y\/n\]|\(y\/N\)|Do you want to proceed\?|Press Enter to continue|Allow .* to execute/';
 
-    private const REMOTE_URL = '/https:\/\/(claude\.ai\/code\/[^\s\x1b]+|antigravity\.google\/[^\s\x1b]+)/';
+    private const REMOTE_URL = '/https:\/\/(claude\.ai\/code\/[^\s\x1b]+|antigravity\.google(?:\.com)?\/[^\s\x1b]+)/';
 
     public function __construct(private Tmux $tmux, private OpenRouter $openRouter) {}
 
@@ -137,10 +137,129 @@ class AgentSessionManager
 
     public function history(AgentSession $session): array
     {
+        $terminalOutput = $session->use_openrouter ? '' : $this->tmux->capture($session->name);
+
         return [
             'session' => $session,
             'messages' => $session->messages()->oldest('id')->get(),
-            'terminal_output' => $session->use_openrouter ? '' : $this->tmux->capture($session->name),
+            'terminal_output' => $terminalOutput,
+            'live_telemetry' => $this->parseLiveTelemetry($terminalOutput, $session),
+        ];
+    }
+
+    public function parseLiveTelemetry(string $pane, AgentSession $session): array
+    {
+        if ($session->use_openrouter || trim($pane) === '') {
+            return [
+                'is_thinking' => $session->state === 'working',
+                'current_thought' => $session->state === 'working'
+                    ? "Synthesizing response via OpenRouter ({$session->model})…"
+                    : 'Ready for instructions',
+                'current_action' => $session->state === 'working' ? 'Streaming API completion' : 'Idle',
+                'thinking_steps' => [],
+                'tool_calls' => [],
+                'clean_response' => '',
+            ];
+        }
+
+        $lines = explode("\n", str_replace("\r", '', $pane));
+        $thinkingSteps = [];
+        $toolCalls = [];
+        $responseLines = [];
+        $currentThought = null;
+        $currentAction = null;
+
+        foreach ($lines as $rawLine) {
+            $line = trim($rawLine);
+
+            if ($line === '') {
+                continue;
+            }
+
+            // Skip TUI chrome, dividers, ASCII banners, and status footers
+            if (
+                preg_match('/^[─━═┄┈\-_]{6,}$/u', $line) ||
+                preg_match('/^[▄▀█▌▐░▒▓\s]+$/u', $line) ||
+                str_contains($line, 'auto mode on (shift+tab') ||
+                str_contains($line, 'Accept-edits mode:') ||
+                str_contains($line, '? for shortcuts') ||
+                str_contains($line, 'Esc to cancel') ||
+                str_contains($line, 'Remote control on for this session') ||
+                str_contains($line, 'another device to take over') ||
+                str_starts_with($line, 'root@') ||
+                str_starts_with($line, 'claude --permission-mode') ||
+                str_starts_with($line, 'agy --mode')
+            ) {
+                continue;
+            }
+
+            // Detect thinking / reasoning lines (Claude Code ✻ / ∴ or Antigravity Thinking)
+            if (preg_match('/^(?:[✻✺✹✸✷✶✦✧∴🌀⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s*)?(Thinking[^:]*|Thought for [^\n]+|Reasoning[^:]*|Analyzing[^:]*|Planning[^:]*|Synthesizing[^:]*)(.*)$/ui', $line, $m)) {
+                $thoughtText = trim($m[1].' '.$m[2]);
+                $thinkingSteps[] = $thoughtText;
+                $currentThought = $thoughtText;
+
+                continue;
+            }
+
+            // Detect tool invocations (⏺ Read(...), ⏺ Bash(...), ⏺ Edit(...), Running command, Executing tool)
+            if (preg_match('/^(?:[⏺●◆▶⚡]\s*)?(Read|Edit|Write|Bash|Search|Grep|Glob|Fetch|Task|Update|Inspect|Claim|MCP|Running command|Executing tool|Viewing|Searching)\s*[\(:]?\s*(.+?)\)?$/ui', $line, $m)) {
+                $toolName = ucfirst(strtolower(trim($m[1])));
+                $toolTarget = trim($m[2]);
+                $toolCalls[] = [
+                    'tool' => $toolName,
+                    'target' => $toolTarget,
+                    'output' => null,
+                ];
+                $currentAction = "{$toolName}: {$toolTarget}";
+
+                continue;
+            }
+
+            // Detect tool output sub-lines (⎿  ...)
+            if (preg_match('/^⎿\s*(.+)$/u', $line, $m)) {
+                $subText = trim($m[1]);
+                if (! empty($toolCalls)) {
+                    $lastIdx = count($toolCalls) - 1;
+                    $toolCalls[$lastIdx]['output'] = $toolCalls[$lastIdx]['output']
+                        ? $toolCalls[$lastIdx]['output']."\n".$subText
+                        : $subText;
+                } else {
+                    $thinkingSteps[] = $subText;
+                }
+
+                continue;
+            }
+
+            // Skip echoed prompt lines starting with ❯ or >
+            if (preg_match('/^[❯>]\s*(.*)$/u', $line)) {
+                continue;
+            }
+
+            $responseLines[] = $rawLine;
+        }
+
+        $isWorking = $session->state === 'working' || (bool) preg_match(self::WORKING, $pane);
+
+        if (! $currentThought) {
+            $currentThought = $isWorking
+                ? 'Evaluating context window and formulating next step…'
+                : (! empty($thinkingSteps) ? end($thinkingSteps) : 'Context synchronized — waiting for prompt');
+        }
+
+        if (! $currentAction) {
+            $currentAction = ! empty($toolCalls)
+                ? end($toolCalls)['tool'].': '.end($toolCalls)['target']
+                : ($isWorking ? 'Generating response…' : 'Idle · Ready');
+        }
+
+        return [
+            'is_thinking' => $isWorking,
+            'current_thought' => $currentThought,
+            'current_action' => $currentAction,
+            'thinking_steps' => array_slice(array_values(array_unique($thinkingSteps)), -12),
+            'tool_calls' => array_slice($toolCalls, -12),
+            'clean_response' => trim(implode("\n", array_slice($responseLines, -30))),
         ];
     }
 

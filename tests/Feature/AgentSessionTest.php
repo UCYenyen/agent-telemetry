@@ -62,4 +62,36 @@ class AgentSessionTest extends TestCase
         $this->deleteJson("/api/sessions/{$session->id}")->assertNoContent();
         $this->assertSoftDeleted($session);
     }
+
+    public function test_session_history_extracts_live_thinking_and_tool_telemetry(): void
+    {
+        $pane = implode("\n", [
+            '────────────────────────────────────────',
+            '❯ Refactor the authentication controller',
+            '✻ Thinking about middleware and token validation…',
+            '⏺ Read(app/Http/Controllers/LoginController.php)',
+            '⎿  Read 42 lines',
+            '⏺ Edit(app/Http/Controllers/LoginController.php)',
+            'I have updated the authentication controller with token support.',
+            '────────────────────────────────────────',
+            '  ⏵⏵ auto mode on (shift+tab to cycle)',
+        ]);
+
+        Process::fake(fn () => Process::result(output: $pane));
+
+        $session = AgentSession::create([
+            'name' => 'Agent_telemetry',
+            'title' => 'Auth Refactor',
+            'agent' => 'claude',
+            'model' => 'claude-opus-5-5-high',
+        ]);
+
+        $res = $this->getJson("/api/sessions/{$session->id}")->assertOk();
+        $res->assertJsonPath('live_telemetry.is_thinking', true)
+            ->assertJsonPath('live_telemetry.current_thought', 'Thinking about middleware and token validation…')
+            ->assertJsonPath('live_telemetry.tool_calls.0.tool', 'Read')
+            ->assertJsonPath('live_telemetry.tool_calls.0.output', 'Read 42 lines')
+            ->assertJsonPath('live_telemetry.tool_calls.1.tool', 'Edit')
+            ->assertJsonPath('live_telemetry.clean_response', 'I have updated the authentication controller with token support.');
+    }
 }

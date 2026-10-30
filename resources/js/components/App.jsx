@@ -29,7 +29,7 @@ export default function App() {
                 {state && surface === 'council' && <CouncilSurface />}
             </div>
             {state && <DeploySessionModal open={deploying} onClose={() => setDeploying(false)} />}
-            {state && <SessionConsole sessionId={consoleSessionId} onClose={() => setConsoleSessionId(null)} />}
+            {state && <SessionConsole sessionId={consoleSessionId} onSelectSession={setConsoleSessionId} onClose={() => setConsoleSessionId(null)} />}
         </>
     );
 }
