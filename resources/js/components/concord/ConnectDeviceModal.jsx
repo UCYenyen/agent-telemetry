@@ -116,7 +116,7 @@ export default function ConnectDeviceModal({ open, room, currentUser, visitorEma
                         <input type="checkbox" checked={instantPrompts} onChange={(e) => setInstantPrompts(e.target.checked)} />
                         <span>
                             <strong>Instant prompts</strong>
-                            Installs a <code>concord</code> command. Start Claude Code with <code>concord</code> instead of <code>claude</code>, and prompts from this group start right away, even while it is idle. Terminal only; in VS Code they start after the current turn.
+                            Installs a <code>concord</code> command. Start Claude Code with <code>concord</code> instead of <code>claude</code>, and prompts from this group start right away, even while it is idle. In VS Code, Claude Code then opens in a terminal tab for this project, since the graphical panel can't take instant prompts.
                         </span>
                     </label>
                     <pre className="concord-code-pre">{oneLineCommand}</pre>

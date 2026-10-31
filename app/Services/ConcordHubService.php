@@ -643,6 +643,57 @@ fi
 exec claude --dangerously-load-development-channels server:concord-channel "\$@"
 LAUNCHER
     chmod +x "\${HOME}/.local/bin/concord"
+
+    # VS Code: the Claude Code extension's terminal mode types "claude" into a VS Code terminal.
+    # This project's VS Code terminals put .concord/bin first on PATH, so that "claude" starts
+    # with the channel too. (The graphical panel runs Claude non-interactively, where channels are off.)
+    mkdir -p .concord/bin
+    cat > .concord/bin/claude <<'SHIM'
+#!/usr/bin/env bash
+# Starts Claude Code with the Concord channel in this project's VS Code terminals.
+here="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+PATH="\$(printf '%s' "\$PATH" | tr ':' '\n' | grep -vxF "\$here" | paste -sd: -)"
+real="\$(command -v claude || true)"
+if [ -z "\$real" ]; then
+  echo "[concord] Claude Code (claude) is not installed or not on PATH." >&2
+  exit 127
+fi
+if [ -t 0 ] && [ -t 1 ]; then
+  exec "\$real" --dangerously-load-development-channels server:concord-channel "\$@"
+fi
+exec "\$real" "\$@"
+SHIM
+    chmod +x .concord/bin/claude
+    python3 - <<'PY'
+import json, os
+
+path = ".vscode/settings.json"
+bin_dir = "\${workspaceFolder}/.concord/bin"
+os.makedirs(".vscode", exist_ok=True)
+settings = {}
+if os.path.exists(path):
+    try:
+        with open(path) as handle:
+            settings = json.load(handle)
+    except (OSError, ValueError):
+        settings = None
+if settings is None:
+    print("[SKIP] .vscode/settings.json has comments or is not plain JSON. Add these settings by hand:")
+    print('  "claudeCode.useTerminal": true,')
+    print('  "terminal.integrated.env.osx": {"PATH": "' + bin_dir + ':\${env:PATH}"},')
+    print('  "terminal.integrated.env.linux": {"PATH": "' + bin_dir + ':\${env:PATH}"},')
+    print('  "terminal.integrated.env.windows": {"PATH": "' + bin_dir + ';\${env:PATH}"}')
+else:
+    settings["claudeCode.useTerminal"] = True
+    for platform, sep in (("osx", ":"), ("linux", ":"), ("windows", ";")):
+        env = settings.setdefault("terminal.integrated.env." + platform, {})
+        current = env.get("PATH", "\${env:PATH}")
+        if bin_dir not in current:
+            env["PATH"] = bin_dir + sep + current
+    with open(path, "w") as handle:
+        json.dump(settings, handle, indent=2)
+    print("[VS Code] Claude Code opens in a VS Code terminal for this project, with instant prompts")
+PY
     CHANNEL_ON=1
     ;;
 esac
@@ -658,6 +709,11 @@ if [ "\${CHANNEL_ON}" = 1 ]; then
   echo "instead of claude (claude --continue becomes concord --continue). Prompts from Concord then"
   echo "start straight away, even while it is idle. When Claude Code asks about the development"
   echo "channel, choose 'I am using this for local development'."
+  echo ""
+  echo "VS Code: reload the window, then open Claude Code as usual. For this project it now opens in"
+  echo "a terminal tab inside VS Code, which is what lets Concord prompts start while it is idle."
+  echo "Prefer the graphical panel? Remove \"claudeCode.useTerminal\" from .vscode/settings.json;"
+  echo "prompts then start when Claude finishes its current turn."
   case ":\${PATH}:" in
     *":\${HOME}/.local/bin:"*) ;;
     *) echo '  First add ~/.local/bin to your PATH (for example in ~/.bashrc):  export PATH="\$HOME/.local/bin:\$PATH"' ;;
