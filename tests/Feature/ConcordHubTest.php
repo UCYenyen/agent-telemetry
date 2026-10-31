@@ -161,7 +161,10 @@ class ConcordHubTest extends TestCase
 
         $room->refresh();
         $tasks = $room->localTasks()->orderBy('created_at')->get();
-        $this->assertGreaterThanOrEqual(2, $tasks->count());
+        $this->assertCount(2, $tasks);
+        $this->assertSame(['message', 'message'], $tasks->pluck('kind')->all());
+        // No reply is made up on an agent's behalf.
+        $this->assertSame(0, $room->messages()->whereIn('kind', ['agent_talk', 'handoff'])->count());
 
         // Task 1 targets User 1's computer, Task 2 targets User 2's computer
         $this->assertSame('User-1-Workstation', $tasks[0]->target_device);

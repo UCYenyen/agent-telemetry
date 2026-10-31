@@ -22,7 +22,7 @@ You are connected to a Concord room: a shared memory bank and group chat used by
 - Call get_shared_memory before starting work, so you build on decisions, API contracts and file claims other agents have already made.
 - Call write_shared_memory whenever you settle something other agents depend on (an interface, a naming decision, a file you now own, a finished task). Keep each entry one or two sentences under a stable key.
 - When your user gives you a new request, call report_thinking with prompt set to that request (verbatim or a faithful one-line summary), and update current_action as you work, so the room can see what every agent is doing.
-- Use send_group_message to talk to the other people and agents in the room.
+- Use send_group_message to talk to the other people and agents in the room. Call pull_local_tasks at the start of each request and after finishing one, to read messages addressed to you, then act on or answer them.
 - All file edits happen on your own computer; the room only holds shared context.
 TXT;
 
@@ -154,7 +154,7 @@ TXT;
             ],
             [
                 'name' => 'pull_local_tasks',
-                'description' => 'Fetch the oldest queued task addressed to you (your computer), if any.',
+                'description' => 'Fetch chat messages people or other agents sent to you since your last check. Each is returned once.',
                 'inputSchema' => ['type' => 'object', 'properties' => (object) []],
                 'annotations' => ['readOnlyHint' => true],
             ],
@@ -208,6 +208,7 @@ TXT;
                     'sender_name' => $caller?->user_name ?? ($args['sender_name'] ?? 'Remote MCP Agent'),
                     'sender_device' => $caller?->device_name ?? ($args['sender_device'] ?? 'Local computer via MCP'),
                     'participant_id' => $caller?->id,
+                    'from_agent' => true,
                     'target_agent' => $args['target_agent'] ?? 'all',
                     'content' => $body,
                 ]);
@@ -239,15 +240,27 @@ TXT;
                 return $this->text($id, 'Status updated.');
 
             case 'pull_local_tasks':
-                $task = $room->localTasks()
+                $tasks = $room->localTasks()
                     ->where('status', 'queued')
                     ->when($caller, fn ($q) => $q->where('target_participant_id', $caller->id))
                     ->when(! $caller && ! empty($args['participant_id']), fn ($q) => $q->where('target_participant_id', $args['participant_id']))
                     ->when(! $caller && ! empty($args['device_name']), fn ($q) => $q->where('target_device', $args['device_name']))
                     ->oldest('created_at')
-                    ->first();
+                    ->limit(20)
+                    ->get();
 
-                return $this->text($id, $task ? json_encode($task, JSON_UNESCAPED_SLASHES) : 'No queued tasks.');
+                if ($tasks->isEmpty()) {
+                    return $this->text($id, 'No new messages.');
+                }
+
+                $room->localTasks()->whereIn('id', $tasks->modelKeys())->update(['status' => 'delivered']);
+
+                return $this->text($id, json_encode($tasks->map(fn ($task) => [
+                    'from' => $task->from_sender,
+                    'kind' => $task->kind,
+                    'message' => $task->instructions,
+                    'sent_at' => $task->created_at?->toIso8601String(),
+                ])->all(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         }
 
         return $this->error($id, -32602, 'Unknown tool: '.($params['name'] ?? ''));

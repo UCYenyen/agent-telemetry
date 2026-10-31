@@ -188,4 +188,31 @@ class ConcordMcpTest extends TestCase
         $this->assertSame('Reading the auth controller', $agent->current_action);
         $this->assertSame('working', $agent->status);
     }
+
+    public function test_messages_reach_real_agents_once_and_agents_never_message_themselves(): void
+    {
+        $room = $this->room();
+        $ana = $this->mcpUrl($room);
+        $ben = $this->mcpUrl($room, 'user_email=ben@dev.io&user_name=Ben&device_name=ben-pc');
+        $this->postJson($ana, ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'ping']);
+        $this->postJson($ben, ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'ping']);
+
+        $this->postJson($ana, ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call', 'params' => [
+            'name' => 'send_group_message',
+            'arguments' => ['body' => 'I own routes/web.php, take the React side.'],
+        ]])->assertJsonPath('result.isError', false);
+
+        $this->postJson($ana, ['jsonrpc' => '2.0', 'id' => 3, 'method' => 'tools/call', 'params' => ['name' => 'pull_local_tasks']])
+            ->assertSee('No new messages.');
+
+        $this->postJson($ben, ['jsonrpc' => '2.0', 'id' => 4, 'method' => 'tools/call', 'params' => ['name' => 'pull_local_tasks']])
+            ->assertSee('I own routes/web.php')
+            ->assertSee('Ana');
+        $this->postJson($ben, ['jsonrpc' => '2.0', 'id' => 5, 'method' => 'tools/call', 'params' => ['name' => 'pull_local_tasks']])
+            ->assertSee('No new messages.');
+
+        $this->assertSame(1, $room->messages()->count());
+        $this->assertSame('agent', $room->messages()->first()->sender_kind);
+        $this->assertSame([], $room->fresh()->shared_memory ?? []);
+    }
 }
