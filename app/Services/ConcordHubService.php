@@ -492,7 +492,8 @@ class ConcordHubService
         string $baseUrl,
         ?string $participantId = null,
         ?string $userEmail = null,
-        ?string $userName = null
+        ?string $userName = null,
+        string $channel = ''
     ): string {
         // Every request-supplied value is emitted single-quoted via escapeshellarg: this script
         // is piped straight into bash, so a crafted ?user= or ?email= must never expand.
@@ -505,6 +506,7 @@ class ConcordHubService
         $defaultEmail = escapeshellarg((string) ($userEmail ?? ''));
         $defaultUser = escapeshellarg((string) ($userName ?? ''));
         $participantId = escapeshellarg((string) ($participantId ?? ''));
+        $defaultChannel = escapeshellarg(in_array($channel, ['yes', 'no'], true) ? $channel : '');
 
         return <<<BASH
 #!/usr/bin/env bash
@@ -521,6 +523,7 @@ ROOM_TITLE={$roomTitle}
 PARTICIPANT_ID={$participantId}
 DEFAULT_USER={$defaultUser}
 DEFAULT_EMAIL={$defaultEmail}
+DEFAULT_CHANNEL={$defaultChannel}
 USER_NAME="\${CONCORD_USER:-\$DEFAULT_USER}"
 if [ -z "\${USER_NAME}" ]; then USER_NAME="\$(whoami)"; fi
 USER_EMAIL="\${CONCORD_EMAIL:-\$DEFAULT_EMAIL}"
@@ -617,12 +620,52 @@ if [ -z "\${PARTICIPANT_ID}" ]; then
   PARTICIPANT_ID=\$(printf '%s' "\${REG_JSON}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('participant',{}).get('id',''))" 2>/dev/null || true)
 fi
 
+# 3. Instant prompts: a "concord" command that starts Claude Code with the Concord channel,
+#    so prompts sent from Concord start right away even while the session sits idle.
+CHANNEL_CHOICE="\${CONCORD_CHANNEL:-\$DEFAULT_CHANNEL}"
+if [ -z "\${CHANNEL_CHOICE}" ] && { : < /dev/tty; } 2>/dev/null; then
+  printf "Let prompts from Concord start right away, even while Claude Code is idle? [Y/n] " > /dev/tty
+  read -r CHANNEL_CHOICE < /dev/tty || CHANNEL_CHOICE=""
+  CHANNEL_CHOICE="\${CHANNEL_CHOICE:-yes}"
+fi
+CHANNEL_ON=0
+case "\${CHANNEL_CHOICE}" in
+  y|Y|yes|Yes|YES|1)
+    mkdir -p "\${HOME}/.local/bin"
+    cat > "\${HOME}/.local/bin/concord" <<'LAUNCHER'
+#!/usr/bin/env bash
+# Starts Claude Code with the Concord channel, so prompts sent from Concord reach it even when idle.
+# Run it in a project folder connected to a Concord group; any arguments are passed on to claude.
+if ! grep -qs '"concord-channel"' .mcp.json; then
+  echo "[concord] This folder is not connected to a Concord group, so starting plain Claude Code." >&2
+  exec claude "\$@"
+fi
+exec claude --dangerously-load-development-channels server:concord-channel "\$@"
+LAUNCHER
+    chmod +x "\${HOME}/.local/bin/concord"
+    CHANNEL_ON=1
+    ;;
+esac
+
 echo "[OK] Connected \${DEVICE_NAME} to \${ROOM_TITLE}. Participant ID: \${PARTICIPANT_ID}"
 echo ""
-echo "Prompts you send to this agent from the Concord UI (signed in as \${USER_EMAIL}):"
-echo "  - run in your open Claude Code session (terminal or VS Code) as soon as it finishes its current turn;"
-echo "  - to also wake an idle terminal session, start Claude Code with:"
-echo "      claude --dangerously-load-development-channels server:concord-channel"
+echo "Prompts you send to this agent from Concord (signed in as \${USER_EMAIL}) run in your open"
+echo "Claude Code session (terminal or VS Code) as soon as it finishes its current turn."
+if [ "\${CHANNEL_ON}" = 1 ]; then
+  echo ""
+  echo "Instant prompts: ON. In this folder, start Claude Code with"
+  echo "    concord"
+  echo "instead of claude (claude --continue becomes concord --continue). Prompts from Concord then"
+  echo "start straight away, even while it is idle. When Claude Code asks about the development"
+  echo "channel, choose 'I am using this for local development'."
+  case ":\${PATH}:" in
+    *":\${HOME}/.local/bin:"*) ;;
+    *) echo '  First add ~/.local/bin to your PATH (for example in ~/.bashrc):  export PATH="\$HOME/.local/bin:\$PATH"' ;;
+  esac
+else
+  echo "Instant prompts: OFF. Re-run this command and answer yes to turn them on."
+fi
+echo ""
 echo "Restart Claude Code (or reload the VS Code window) so it picks up the new hooks."
 BASH;
     }

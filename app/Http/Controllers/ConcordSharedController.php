@@ -439,7 +439,9 @@ class ConcordSharedController extends Controller
         $participantId = $request->query('participant_id') ? (string) $request->query('participant_id') : null;
         $userEmail = $request->query('email') ? (string) $request->query('email') : null;
         $userName = $request->query('user') ? (string) $request->query('user') : null;
-        $script = $hub->generateConnectorScript($room, $request->getSchemeAndHttpHost(), $participantId, $userEmail, $userName);
+        // ?channel=yes|no pre-answers the "start idle sessions instantly" question; anything else asks.
+        $channel = in_array($request->query('channel'), ['yes', 'no'], true) ? $request->query('channel') : '';
+        $script = $hub->generateConnectorScript($room, $request->getSchemeAndHttpHost(), $participantId, $userEmail, $userName, $channel);
 
         return response($script, 200, [
             'Content-Type' => 'text/plain; charset=utf-8',

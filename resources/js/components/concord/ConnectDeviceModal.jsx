@@ -10,6 +10,7 @@ export default function ConnectDeviceModal({ open, room, currentUser, visitorEma
     const [accountEmail, setAccountEmail] = useState('');
     const [deviceName, setDeviceName] = useState('');
     const [configClient, setConfigClient] = useState('claude');
+    const [instantPrompts, setInstantPrompts] = useState(true);
 
     useEffect(() => {
         if (!open) return;
@@ -31,6 +32,7 @@ export default function ConnectDeviceModal({ open, room, currentUser, visitorEma
     const connectQuery = new URLSearchParams();
     if (accountEmail) connectQuery.set('email', accountEmail);
     if (userName) connectQuery.set('user', userName);
+    connectQuery.set('channel', instantPrompts ? 'yes' : 'no');
     const oneLineCommand = `curl -fsSL "${baseUrl}/connect/${room.share_token}${connectQuery.toString() ? `?${connectQuery}` : ''}" | bash`;
 
     const mcpBaseEndpoint = room.mcp_endpoint || `${baseUrl}/api/concord/mcp/${room.mcp_token}`;
@@ -110,6 +112,13 @@ export default function ConnectDeviceModal({ open, room, currentUser, visitorEma
                             Copy
                         </button>
                     </div>
+                    <label className="agent-team-toggle">
+                        <input type="checkbox" checked={instantPrompts} onChange={(e) => setInstantPrompts(e.target.checked)} />
+                        <span>
+                            <strong>Instant prompts</strong>
+                            Installs a <code>concord</code> command. Start Claude Code with <code>concord</code> instead of <code>claude</code>, and prompts from this group start right away, even while it is idle. Terminal only; in VS Code they start after the current turn.
+                        </span>
+                    </label>
                     <pre className="concord-code-pre">{oneLineCommand}</pre>
                     <p className="connect-note">
                         Sets up Claude Code (terminal and VS Code), Cursor, Gemini CLI and Antigravity in that project. Needs bash, curl and python3; on Windows run it in Git Bash. Then restart Claude Code or reload the VS Code window.
