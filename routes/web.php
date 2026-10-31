@@ -30,6 +30,7 @@ Route::prefix('api/concord')->group(function () {
     Route::post('shared/{token}/messages', [ConcordSharedController::class, 'storeMessage']);
     Route::post('shared/{token}/register-device', [ConcordSharedController::class, 'registerDevice']);
     Route::delete('shared/{token}/participants/{participant}', [ConcordSharedController::class, 'destroyParticipant']);
+    Route::patch('shared/{token}/participants/{participant}', [ConcordSharedController::class, 'updateParticipant']);
     Route::post('shared/{token}/heartbeat', [ConcordSharedController::class, 'heartbeat']);
     Route::get('shared/{token}/tasks/pull', [ConcordSharedController::class, 'pullTask']);
     Route::post('shared/{token}/tasks/{task}/complete', [ConcordSharedController::class, 'completeTask']);

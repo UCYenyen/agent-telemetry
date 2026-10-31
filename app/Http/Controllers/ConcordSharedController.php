@@ -103,6 +103,28 @@ class ConcordSharedController extends Controller
         return response()->json($this->formatSharedRoom($room->fresh(), $permission, $projectRole, $bypassedByLink, $viewerEmail, $invite, $request));
     }
 
+    /**
+     * Only the agent's owner, signed in to Agent Host, can let teammates give it tasks.
+     */
+    public function updateParticipant(Request $request, string $token, ConcordParticipant $participant): JsonResponse
+    {
+        [$room] = $this->resolveRoomAccess($request, $token);
+        if (! $room || $participant->concord_room_id !== $room->id) {
+            return response()->json(['message' => 'Agent not found in this group.'], 404);
+        }
+
+        $sessionEmail = $request->session()->get('agent_host.authenticated')
+            ? strtolower((string) data_get($request->session()->get('agent_host.user'), 'email', ''))
+            : '';
+        if ($sessionEmail === '' || $sessionEmail !== strtolower((string) $participant->account_email)) {
+            return response()->json(['message' => 'Only the owner of this agent, signed in to Agent Host, can change this.'], 403);
+        }
+
+        $participant->update($request->validate(['accepts_team_tasks' => ['required', 'boolean']]));
+
+        return response()->json(['participant' => $participant->fresh()]);
+    }
+
     public function registerDevice(Request $request, string $token): JsonResponse
     {
         [$room, $invite, $permission, $projectRole, $bypassedByLink, $viewerEmail] = $this->resolveRoomAccess($request, $token);

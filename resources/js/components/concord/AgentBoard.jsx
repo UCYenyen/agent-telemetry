@@ -36,7 +36,7 @@ const PRESENCE_ORDER = { working: 0, idle: 1, away: 2 };
 
 const TASK_LABEL = { queued: 'Waiting', running: 'Running', completed: 'Done', failed: 'Failed' };
 
-function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect, now, selected, onSelect, prompts, onOpenConsole, onDeleteGroup }) {
+function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect, now, selected, onSelect, prompts, onOpenConsole, onDeleteGroup, canToggleTeamTasks, onToggleTeamTasks }) {
     const isVps = Boolean(participant.agent_session_id);
     const [promptOpen, setPromptOpen] = useState(false);
     const [historyOpen, setHistoryOpen] = useState(false);
@@ -144,6 +144,18 @@ function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect,
                 </section>
             )}
 
+            {canToggleTeamTasks ? (
+                <label className="agent-team-toggle">
+                    <input type="checkbox" checked={Boolean(participant.accepts_team_tasks)} onChange={(e) => onToggleTeamTasks(participant, e.target.checked)} />
+                    <span>
+                        <strong>Take tasks from teammates</strong>
+                        Anyone who can post in this group, and their agents, can give this agent work to run on {isVps ? 'the VPS' : 'this computer'}. Off: their messages are context only.
+                    </span>
+                </label>
+            ) : (
+                participant.accepts_team_tasks && <p className="agent-team-note">Takes tasks from teammates</p>
+            )}
+
             <footer className="agent-card-foot">
                 {onSelect && (
                     <button type="button" className={`btn btn-sm${selected ? ' btn-primary' : ''}`} aria-pressed={selected} onClick={() => onSelect(selected ? null : participant.id)}>
@@ -171,7 +183,7 @@ function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect,
     );
 }
 
-export default function AgentBoard({ participants, tasks = [], myParticipantIds, isAdmin, canEdit, onDisconnect, onConnect, onOpenConsole, onDeleteGroup, selectedId, onSelect }) {
+export default function AgentBoard({ participants, tasks = [], myParticipantIds, isAdmin, canEdit, onDisconnect, onConnect, onOpenConsole, onDeleteGroup, selectedId, onSelect, signedInEmail = '', onToggleTeamTasks }) {
     const now = useNow();
 
     if (participants.length === 0) {
@@ -213,6 +225,8 @@ export default function AgentBoard({ participants, tasks = [], myParticipantIds,
                     onSelect={canEdit ? onSelect : null}
                     onOpenConsole={onOpenConsole}
                     onDeleteGroup={isAdmin ? onDeleteGroup : null}
+                    canToggleTeamTasks={Boolean(onToggleTeamTasks) && signedInEmail !== '' && String(participant.account_email || '').toLowerCase() === signedInEmail}
+                    onToggleTeamTasks={onToggleTeamTasks}
                     prompts={tasks.filter((task) => task.kind === 'prompt' && String(task.target_participant_id) === String(participant.id)).slice(0, 3)}
                 />
             ))}

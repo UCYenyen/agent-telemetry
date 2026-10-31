@@ -261,9 +261,8 @@ class ConcordMcpTest extends TestCase
 
         // The channel bridge gets each prompt exactly once.
         $this->postJson("/api/concord/shared/{$room->share_token}/messages", ['sender_email' => 'ana@dev.io', 'target_participant_id' => $ana->id, 'body' => 'Run the tests'])->assertOk();
-        $this->postJson("/api/concord/mcp/{$room->mcp_token}/inbox?user_email=ana@dev.io")
-            ->assertOk()
-            ->assertJsonPath('prompts.0.text', 'Run the tests');
+        $inbox = $this->postJson("/api/concord/mcp/{$room->mcp_token}/inbox?user_email=ana@dev.io")->assertOk();
+        $this->assertStringStartsWith("Run the tests\n\n---\nYou are Ana's agent", $inbox->json('prompts.0.text'));
         $this->postJson("/api/concord/mcp/{$room->mcp_token}/inbox?user_email=ana@dev.io")->assertJsonPath('prompts', []);
         $this->postJson($hook('ana'), ['hook_event_name' => 'Stop'])->assertExactJson([]);
     }
@@ -337,5 +336,59 @@ class ConcordMcpTest extends TestCase
         $this->assertNull(ConcordRoom::find($room->id));
         $this->assertSoftDeleted('agent_sessions', ['id' => $session->json('id')]);
         Process::assertRan(fn ($process) => ($process->command[1] ?? '') === 'kill-session');
+    }
+
+    public function test_two_people_split_one_request_and_each_agent_works_on_its_own_computer(): void
+    {
+        $room = $this->room();
+        $mcp = fn (string $who, string $device) => "/api/concord/mcp/{$room->mcp_token}?user_email={$who}@dev.io&user_name=".ucfirst($who)."&device_name={$device}";
+        $hook = fn (string $who, string $device) => str_replace('?', '/events?', $mcp($who, $device));
+        $this->postJson($mcp('ana', 'ana-laptop'), ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'ping']);
+        $this->postJson($mcp('ben', 'ben-pc'), ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'ping']);
+        $ben = $room->participants()->where('account_email', 'ben@dev.io')->firstOrFail();
+
+        // User 1 prompts agent 1 locally: agent 1 is briefed on the group and how to split the work.
+        $brief = $this->postJson($hook('ana', 'ana-laptop'), ['hook_event_name' => 'UserPromptSubmit', 'prompt' => 'Add signup: API in Laravel, form in React'])
+            ->assertOk()
+            ->assertJsonPath('hookSpecificOutput.hookEventName', 'UserPromptSubmit')
+            ->json('hookSpecificOutput.additionalContext');
+        $this->assertStringContainsString("Ben on ben-pc (id {$ben->id})", $brief);
+        $this->assertStringContainsString('send_group_message', $brief);
+        $this->assertSame('Started: Add signup: API in Laravel, form in React', $room->messages()->latest('id')->value('content'));
+
+        // Agent 1 hands agent 2 its part. Ben has not opted in, so it is context, not a task.
+        $this->postJson($mcp('ana', 'ana-laptop'), ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call', 'params' => [
+            'name' => 'send_group_message',
+            'arguments' => ['body' => 'Your part: build the React signup form against POST /api/signup.', 'target_agent' => $ben->id],
+        ]])->assertJsonPath('result.isError', false);
+        $this->postJson($hook('ben', 'ben-pc'), ['hook_event_name' => 'Stop'])->assertExactJson([]);
+
+        // When User 2 next prompts agent 2, it learns what agent 1 started and the part handed to it.
+        $benBrief = $this->postJson($hook('ben', 'ben-pc'), ['hook_event_name' => 'UserPromptSubmit', 'prompt' => 'What should I do?'])
+            ->json('hookSpecificOutput.additionalContext');
+        $this->assertStringContainsString("Ana's agent started: Add signup", $benBrief);
+        $this->assertStringContainsString('build the React signup form', $benBrief);
+
+        // Only Ben, signed in, can let teammates give his agent tasks.
+        $this->withSession(['agent_host.authenticated' => true, 'agent_host.user' => ['email' => 'ana@dev.io', 'role' => 'admin']])
+            ->patchJson("/api/concord/shared/{$room->share_token}/participants/{$ben->id}", ['accepts_team_tasks' => true])
+            ->assertForbidden();
+        $this->withSession(['agent_host.authenticated' => true, 'agent_host.user' => ['email' => 'ben@dev.io', 'role' => 'admin']])
+            ->patchJson("/api/concord/shared/{$room->share_token}/participants/{$ben->id}", ['accepts_team_tasks' => true])
+            ->assertOk();
+
+        // Now agent 1's handoff runs on agent 2 as soon as it finishes its turn.
+        $this->postJson($mcp('ana', 'ana-laptop'), ['jsonrpc' => '2.0', 'id' => 3, 'method' => 'tools/call', 'params' => [
+            'name' => 'send_group_message',
+            'arguments' => ['body' => 'Also add client-side email validation.', 'target_agent' => $ben->id],
+        ]]);
+        $this->postJson($hook('ben', 'ben-pc'), ['hook_event_name' => 'Stop', 'last_assistant_message' => 'Read the plan.'])
+            ->assertJsonPath('decision', 'block')
+            ->assertSee('Also add client-side email validation.');
+
+        // Agent 1 finishes on its own computer; the group sees it and agent 2 gets it as context.
+        $this->postJson($hook('ana', 'ana-laptop'), ['hook_event_name' => 'Stop', 'last_assistant_message' => 'POST /api/signup is live and validated.']);
+        $this->assertSame('Finished: POST /api/signup is live and validated.', $room->messages()->where('kind', 'agent_status')->latest('id')->value('content'));
+        $this->assertTrue($room->localTasks()->where('target_participant_id', $ben->id)->where('kind', 'context')->where('instructions', 'like', '%POST /api/signup is live%')->exists());
     }
 }

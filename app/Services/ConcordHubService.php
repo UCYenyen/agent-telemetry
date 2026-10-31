@@ -157,7 +157,7 @@ class ConcordHubService
 
         $mcp = ['mcpServers' => ['concord' => ['type' => 'http', 'url' => $url]]];
         $settings = ['hooks' => [
-            'UserPromptSubmit' => [['hooks' => [$report]]],
+            'UserPromptSubmit' => [['hooks' => [$stop]]],
             'PreToolUse' => [['matcher' => '*', 'hooks' => [$report]]],
             'Stop' => [['hooks' => [$stop]]],
         ]];
@@ -279,10 +279,10 @@ class ConcordHubService
     /**
      * Posts a chat message and queues it for the real connected agents. Nothing replies on an agent's behalf.
      *
-     * A copy becomes a runnable "prompt" only for agents owned by the signed-in sender
-     * (verified_email from the Agent Host session); everyone else's agents get a plain "message"
-     * they can read with pull_local_tasks but never run automatically. This keeps room members
-     * from executing work on each other's computers.
+     * A copy becomes a runnable "prompt" for agents owned by the signed-in sender (verified_email
+     * from the Agent Host session), and for agents whose owner switched on "take tasks from
+     * teammates". Every other agent gets a plain "message": context it reads but never runs, so
+     * room members can't execute work on each other's computers without the owner's consent.
      */
     public function sendPrompt(ConcordRoom $room, array $data): ConcordRoom
     {
@@ -320,6 +320,7 @@ class ConcordHubService
 
         foreach ($recipients as $agent) {
             $isOwner = $verifiedEmail !== '' && strtolower((string) $agent->account_email) === $verifiedEmail;
+            $runnable = $isOwner || $agent->accepts_team_tasks;
 
             $task = $room->localTasks()->create([
                 'target_participant_id' => $agent->id,
@@ -327,14 +328,14 @@ class ConcordHubService
                 'target_device' => $agent->device_name,
                 'from_sender' => $senderName,
                 'from_email' => $verifiedEmail ?: null,
-                'kind' => $isOwner ? 'prompt' : 'message',
+                'kind' => $runnable ? 'prompt' : 'message',
                 'instructions' => $text,
                 'status' => 'queued',
                 'result_summary' => "From {$senderName} ({$senderDevice})",
             ]);
 
             // A VPS session is typed into right away; its Stop hook posts the reply when it finishes.
-            if ($isOwner && $agent->agent_session_id && ($session = AgentSession::find($agent->agent_session_id))) {
+            if ($runnable && $agent->agent_session_id && ($session = AgentSession::find($agent->agent_session_id))) {
                 if ($this->claimTasks($agent)->isNotEmpty()) {
                     $agent->recordActivity('prompt', "Prompt from {$senderName} via Concord", $text);
                     app(AgentSessionManager::class)->prompt($session, $text);
@@ -343,6 +344,77 @@ class ConcordHubService
         }
 
         return $room->fresh(['participants', 'invites', 'messages', 'localTasks']);
+    }
+
+    /**
+     * Tells the rest of the group what an agent is doing: optionally a line in the chat, and a
+     * context note queued for every other agent, which it receives with its next briefing.
+     */
+    public function shareWithGroup(ConcordRoom $room, ConcordParticipant $agent, ?string $chat, string $context): void
+    {
+        if ($chat !== null && trim($chat) !== '') {
+            $room->messages()->create([
+                'participant_id' => $agent->id,
+                'sender_name' => $agent->user_name,
+                'sender_user' => $agent->user_name,
+                'sender_device' => $agent->device_name,
+                'sender_kind' => 'agent',
+                'sender_icon' => 'AG',
+                'sender_color' => $agent->color ?: '#ff5722',
+                'kind' => 'agent_status',
+                'content' => Str::limit(trim($chat), 1500),
+            ]);
+        }
+
+        $others = $room->participants()->where('kind', 'agent')->whereKeyNot($agent->id)->get();
+        foreach ($others as $other) {
+            $room->localTasks()->create([
+                'target_participant_id' => $other->id,
+                'target_agent_name' => $other->name,
+                'target_device' => $other->device_name,
+                'from_sender' => "{$agent->user_name} ({$agent->device_name})",
+                'kind' => 'context',
+                'instructions' => Str::limit(trim($context), 800),
+                'status' => 'queued',
+            ]);
+        }
+    }
+
+    /**
+     * What an agent is told at the start of each turn: who else is in the group, how to split
+     * work with them, and what the group said or did since its last turn.
+     */
+    public function coordinationBrief(ConcordRoom $room, ConcordParticipant $agent): string
+    {
+        $others = $room->participants()->where('kind', 'agent')->whereKeyNot($agent->id)->orderBy('created_at')->get();
+        $updates = $this->claimTasks($agent, ['message', 'context'], 20);
+
+        if ($others->isEmpty() && $updates->isEmpty()) {
+            return '';
+        }
+
+        $lines = ["You are {$agent->user_name}'s agent on {$agent->device_name} in the Concord group \"{$room->title}\"."];
+        if ($others->isNotEmpty()) {
+            $lines[] = 'Other agents in this group, each working on its own person\'s computer:';
+            foreach ($others as $other) {
+                $lines[] = "- {$other->user_name} on {$other->device_name} (id {$other->id})"
+                    .($other->accepts_team_tasks ? ', takes tasks from teammates' : ', reads your messages as context only');
+            }
+            $lines[] = 'Only change files on this computer. If the request includes work that belongs to another member, '
+                .'decide which part is yours, send each agent its part with the concord send_group_message tool '
+                .'(target_agent = its id), and record the split and any shared contracts with write_shared_memory. '
+                .'Call get_shared_memory first to build on what the group already decided.';
+        }
+
+        if ($updates->isNotEmpty()) {
+            $lines[] = '';
+            $lines[] = 'New from your group since your last turn:';
+            foreach ($updates as $update) {
+                $lines[] = "- {$update->from_sender}: ".Str::limit(preg_replace('/\s+/', ' ', (string) $update->instructions), 600);
+            }
+        }
+
+        return implode("\n", $lines);
     }
 
     /**
@@ -497,8 +569,9 @@ for path, server in targets.items():
 
 # Claude Code hooks report each prompt, tool call and finished turn to the room's agent board.
 # They live in .claude/settings.local.json (not committed) and only send summaries, never file contents.
-# The Stop hook also prints the hub's answer: when you sent this agent a prompt from the Concord UI,
-# that answer tells Claude to carry on with it, and Claude's final reply is posted back to the room.
+# The prompt and Stop hooks also print the hub's answer: on a new prompt it briefs Claude on the group
+# (other agents, how to split work, what they did since), and on Stop it hands over the next task
+# sent from Concord, whose final reply is posted back to the group.
 events_url = url.replace("?", "/events?", 1)
 post = "curl -s -m 3 -X POST -H 'Content-Type: application/json' --data-binary @- '" + events_url + "'"
 report_hook = {"type": "command", "command": post + " >/dev/null 2>&1 || true", "timeout": 5}
@@ -515,7 +588,7 @@ if os.path.exists(path):
         print(f"[SKIP] {path} is not valid JSON; Claude Code activity reporting not installed")
 if settings is not None:
     hooks = settings.setdefault("hooks", {})
-    for event, matcher, hook in (("UserPromptSubmit", None, report_hook), ("PreToolUse", "*", report_hook), ("Stop", None, stop_hook)):
+    for event, matcher, hook in (("UserPromptSubmit", None, stop_hook), ("PreToolUse", "*", report_hook), ("Stop", None, stop_hook)):
         entries = [e for e in hooks.get(event, []) if "/api/concord/mcp/" not in json.dumps(e)]
         entry = {"hooks": [hook]}
         if matcher:

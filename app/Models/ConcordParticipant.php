@@ -35,11 +35,13 @@ class ConcordParticipant extends Model
         'local_modified_files',
         'last_seen_at',
         'agent_session_id',
+        'accepts_team_tasks',
     ];
 
     protected function casts(): array
     {
         return [
+            'accepts_team_tasks' => 'boolean',
             'use_openrouter' => 'boolean',
             'thinking_steps' => 'array',
             'claimed_files' => 'array',

@@ -44,15 +44,16 @@ function ChatMessage({ message, now }) {
 // A prompt runs on an agent only when it comes from that agent's owner, signed in to Agent Host.
 function deliveryHint(targetAgent, participants, signedInEmail) {
     const owns = (agent) => signedInEmail !== '' && String(agent.account_email || '').toLowerCase() === signedInEmail;
+    const runs = (agent) => owns(agent) || agent.accepts_team_tasks;
     if (!targetAgent) {
-        const mine = participants.filter(owns).length;
-        return mine > 0
-            ? `Runs on your ${mine === 1 ? 'agent' : `${mine} agents`} when each finishes its current turn. Other people's agents get it as a message.`
-            : "Sent as a message. Agents read it but won't run it unless it comes from their owner.";
+        const runners = participants.filter(runs).length;
+        return runners > 0
+            ? `Runs on ${runners === 1 ? '1 agent' : `${runners} agents`} (yours, and any that take tasks from teammates) when each finishes its current turn. The others get it as context.`
+            : 'Every agent gets this as context at the start of its next turn. None will run it.';
     }
-    return owns(targetAgent)
-        ? `Runs in Claude Code on ${targetAgent.device_name} as soon as it finishes its current turn. The reply shows up here.`
-        : `${targetAgent.user_name}'s agent gets this as a message. It won't run it automatically.`;
+    return runs(targetAgent)
+        ? `Runs on ${targetAgent.user_name}'s agent (${targetAgent.device_name}) as soon as it finishes its current turn. The reply shows up here.`
+        : `${targetAgent.user_name}'s agent gets this as context at the start of its next turn. It won't run it on its own.`;
 }
 
 export default function RoomChat({ room, currentUser, target, onTargetChange, myParticipants, hasConnectedMcp, canEdit, sending, onSendPrompt, onConnect }) {

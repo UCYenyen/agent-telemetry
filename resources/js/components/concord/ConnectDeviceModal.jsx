@@ -39,7 +39,7 @@ export default function ConnectDeviceModal({ open, room, currentUser, visitorEma
     const clientConfigs = {
         claude: {
             label: 'Claude Code',
-            hint: 'MCP only. The one-line connector above also adds the hooks that show your prompts on the board and run prompts sent from this group.',
+            hint: 'MCP only. The one-line connector above also adds the hooks that show your prompts on the board, brief Claude on what teammates are doing, and run tasks sent from this group.',
             text: `claude mcp add --transport http concord "${mcpUrl}"`,
         },
         antigravity: {

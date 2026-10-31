@@ -128,6 +128,18 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
         }
     };
 
+    const handleToggleTeamTasks = async (participant, accepts) => {
+        if (!roomDetail) return;
+        try {
+            const token = sharedToken || roomDetail.share_token;
+            await api.patch(`/api/concord/shared/${token}/participants/${participant.id}`, { accepts_team_tasks: accepts });
+            toast(accepts ? `${participant.user_name}'s agent now takes tasks from teammates` : 'Teammates can only send context now');
+            fetchRoom();
+        } catch (err) {
+            toast(err.message, 'error');
+        }
+    };
+
     const handleDisconnectParticipant = async (participant) => {
         if (!roomDetail || !participant) return;
         try {
@@ -323,6 +335,8 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
                         onConnect={() => setConnectModalOpen(true)}
                         onOpenConsole={onOpenConsole}
                         onDeleteGroup={handleDeleteRoom}
+                        signedInEmail={String(currentUser?.email || '').trim().toLowerCase()}
+                        onToggleTeamTasks={currentUser ? handleToggleTeamTasks : null}
                     />
                 </main>
 

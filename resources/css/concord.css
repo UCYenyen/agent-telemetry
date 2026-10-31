@@ -1973,3 +1973,20 @@
 .connect-step-head h4 { margin: 0; font-size: 0.95rem; color: var(--text); }
 .connect-device { max-width: 320px; }
 .connect-modal .concord-code-pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.agent-team-toggle {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    line-height: 1.45;
+    cursor: pointer;
+}
+
+.agent-team-toggle input { margin-top: 3px; accent-color: var(--claude); }
+.agent-team-toggle strong { display: block; color: var(--text); font-size: 0.85rem; }
+.agent-team-note { margin: 0; font-size: 0.78rem; color: var(--muted); }
