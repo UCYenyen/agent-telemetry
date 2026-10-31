@@ -1852,6 +1852,7 @@
     gap: 8px;
 }
 
+.agent-card-foot { flex-wrap: wrap; }
 .agent-card-foot .agent-link.danger { margin-left: auto; }
 
 .agent-tasks {

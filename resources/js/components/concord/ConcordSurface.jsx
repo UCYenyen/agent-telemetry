@@ -8,11 +8,13 @@ import SharedMemoryPanel from './SharedMemoryPanel';
 import ShareRoomModal from './ShareRoomModal';
 import ConnectDeviceModal from './ConnectDeviceModal';
 
-export default function ConcordSurface({ initialFullscreen = false }) {
+export default function ConcordSurface({ initialFullscreen = false, onOpenConsole }) {
     const { state, reload, toast, sharedToken } = useApp();
     const rooms = state?.concord?.rooms || [];
     const currentUser = state?.user || null;
     const isAdmin = Boolean(currentUser?.role === 'admin' || currentUser?.is_admin);
+    // Sessions deployed on this VPS (admin only) can be prompted from any room.
+    const vpsSessions = isAdmin && !sharedToken ? state?.sessions || [] : [];
 
     const [selectedRoomId, setSelectedRoomId] = useState(null);
     const [roomDetail, setRoomDetail] = useState(null);
@@ -105,6 +107,20 @@ export default function ConcordSurface({ initialFullscreen = false }) {
 
     const handleSendPrompt = async (payload) => {
         if (!roomDetail) return;
+        if (String(payload.target_agent).startsWith('vps:')) {
+            const sessionId = payload.target_agent.slice(4);
+            setSending(true);
+            try {
+                await api.post(`/api/sessions/${sessionId}/messages`, { text: payload.content });
+                toast('Sent to the VPS session');
+                reload();
+            } catch (err) {
+                toast(err.message, 'error');
+            } finally {
+                setSending(false);
+            }
+            return;
+        }
         if (!hasConnectedMcp) {
             toast('Connect your local MCP agent first before prompting in the Group Chat.');
             setConnectModalOpen(true);
@@ -270,6 +286,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                     )}
                     <p className="room-meta">
                         {participants.length} agent{participants.length === 1 ? '' : 's'}
+                        {vpsSessions.length > 0 && ` · ${vpsSessions.length} VPS session${vpsSessions.length === 1 ? '' : 's'}`}
                         {workingCount > 0 && <span className="room-meta-working"> · {workingCount} working</span>}
                         {accessLabel && ` · ${accessLabel}`}
                     </p>
@@ -330,6 +347,8 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                     <AgentBoard
                         participants={participants}
                         tasks={roomDetail?.local_tasks || []}
+                        vpsSessions={vpsSessions}
+                        onOpenConsole={onOpenConsole}
                         selectedId={selectedAgentId}
                         onSelect={(id) => {
                             setSelectedAgentId(id);
@@ -362,6 +381,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                         <RoomChat
                             room={roomDetail}
                             currentUser={currentUser}
+                            vpsSessions={vpsSessions}
                             target={selectedAgentId || 'all'}
                             onTargetChange={(value) => setSelectedAgentId(value === 'all' ? null : value)}
                             myParticipants={myParticipants}

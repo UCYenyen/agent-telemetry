@@ -39,11 +39,18 @@ export default function App() {
                 <ModeNav surface={surface} onChange={setSurface} />
                 {state && isAdmin && surface === 'deck' && <FleetDeck onOpenConsole={setConsoleSessionId} />}
                 {(surface === 'concord' || sharedToken || (state && !isAdmin)) && (
-                    <ConcordSurface initialFullscreen={Boolean(sharedToken)} />
+                    <ConcordSurface initialFullscreen={Boolean(sharedToken)} onOpenConsole={setConsoleSessionId} />
                 )}
                 {state && isAdmin && surface === 'council' && <CouncilSurface />}
             </div>
-            {state && isAdmin && <DeploySessionModal open={deploying} onClose={() => setDeploying(false)} />}
+            {state && isAdmin && (
+                <DeploySessionModal
+                    open={deploying}
+                    onClose={() => setDeploying(false)}
+                    // Open the new session straight away; it is also listed under Fleet and in every Concord room.
+                    onDeployed={(session) => setConsoleSessionId(session.id)}
+                />
+            )}
             {state && isAdmin && (
                 <SessionConsole
                     sessionId={consoleSessionId}

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useApp } from '../../context/AppContext';
+import { api } from '../../lib/api';
 
 const WORKING_STATUSES = ['working', 'thinking', 'editing_local'];
 const WORKING_WINDOW_MS = 5 * 60 * 1000;
@@ -156,10 +158,65 @@ function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect,
     );
 }
 
-export default function AgentBoard({ participants, tasks = [], myParticipantIds, isAdmin, canEdit, onDisconnect, onConnect, selectedId, onSelect }) {
+// Agent sessions deployed on this VPS (Fleet). Prompts go straight to the session's terminal.
+function VpsSessionCard({ session, selected, onSelect, onOpenConsole }) {
+    const { run } = useApp();
+    const working = session.state === 'working' || session.state === 'fallback_active';
+    const presence = working ? 'working' : 'idle';
+
+    const remove = () => {
+        if (window.confirm(`Delete the VPS session "${session.title || session.name}"? Its tmux session on the VPS is stopped.`)) {
+            if (selected) onSelect?.(null);
+            run(() => api.delete(`/api/sessions/${session.id}`), 'Session deleted');
+        }
+    };
+
+    return (
+        <article className={`agent-card presence-${presence}${selected ? ' selected' : ''}`} aria-label={`${session.title}, VPS session, ${PRESENCE_LABEL[presence]}`}>
+            <header className="agent-card-head">
+                <span className={`agent-dot ${presence}`} aria-hidden="true" />
+                <div className="agent-identity">
+                    <div className="agent-name">
+                        {session.title || session.name}
+                        <span className="agent-you">VPS</span>
+                    </div>
+                    <div className="agent-sub">
+                        {session.agent} · {session.model || 'default model'}
+                    </div>
+                </div>
+                <div className="agent-state">
+                    <span className={`agent-state-label ${presence}`}>{PRESENCE_LABEL[presence]}</span>
+                </div>
+            </header>
+
+            <section className="agent-block">
+                <div className="agent-block-label">Prompt</div>
+                {session.last_prompt ? <p className="agent-prompt clamped">{session.last_prompt}</p> : <p className="agent-empty">No prompt yet.</p>}
+            </section>
+
+            <footer className="agent-card-foot">
+                {onSelect && (
+                    <button type="button" className={`btn btn-sm${selected ? ' btn-primary' : ''}`} aria-pressed={selected} onClick={() => onSelect(selected ? null : `vps:${session.id}`)}>
+                        {selected ? 'Prompting this agent' : 'Prompt this agent'}
+                    </button>
+                )}
+                {onOpenConsole && (
+                    <button type="button" className="btn btn-sm" onClick={() => onOpenConsole(session.id)}>
+                        Open console
+                    </button>
+                )}
+                <button type="button" className="agent-link danger" onClick={remove}>
+                    Delete session
+                </button>
+            </footer>
+        </article>
+    );
+}
+
+export default function AgentBoard({ participants, vpsSessions = [], tasks = [], myParticipantIds, isAdmin, canEdit, onDisconnect, onConnect, onOpenConsole, selectedId, onSelect }) {
     const now = useNow();
 
-    if (participants.length === 0) {
+    if (participants.length === 0 && vpsSessions.length === 0) {
         return (
             <div className="agent-board-empty">
                 <h3>No agents connected yet</h3>
@@ -179,6 +236,15 @@ export default function AgentBoard({ participants, tasks = [], myParticipantIds,
 
     return (
         <div className="agent-board">
+            {vpsSessions.map((session) => (
+                <VpsSessionCard
+                    key={session.id}
+                    session={session}
+                    selected={String(selectedId) === `vps:${session.id}`}
+                    onSelect={onSelect}
+                    onOpenConsole={onOpenConsole}
+                />
+            ))}
             {cards.map(({ participant, presence, isMine }) => (
                 <AgentCard
                     key={participant.id}

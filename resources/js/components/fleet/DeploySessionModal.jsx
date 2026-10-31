@@ -12,7 +12,7 @@ const ENGINES = [
     ['openrouter', 'OpenRouter API Direct'],
 ];
 
-function DeployForm({ onClose }) {
+function DeployForm({ onClose, onDeployed }) {
     const { state, run, toast } = useApp();
     const [form, setForm] = useState({ title: '', agent: 'auto', model: '', workdir: state.defaults.workdir || '/root' });
     const [submitting, setSubmitting] = useState(false);
@@ -33,6 +33,7 @@ function DeployForm({ onClose }) {
         // Keep the form open on failure so nothing has to be retyped.
         if (result !== null) {
             onClose();
+            if (result?.id) onDeployed?.(result);
         }
     };
 
@@ -78,11 +79,11 @@ function DeployForm({ onClose }) {
     );
 }
 
-export default function DeploySessionModal({ open, onClose }) {
+export default function DeploySessionModal({ open, onClose, onDeployed }) {
     return (
         <Modal open={open} onClose={onClose}>
             <div className="dlg-head">Deploy New Agent Session</div>
-            <DeployForm onClose={onClose} />
+            <DeployForm onClose={onClose} onDeployed={onDeployed} />
         </Modal>
     );
 }
