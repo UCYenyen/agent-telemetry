@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AgentSession;
 use App\Models\ConcordLocalTask;
 use App\Models\ConcordParticipant;
 use App\Models\ConcordRoom;
@@ -75,42 +76,6 @@ class ConcordHubService
         ];
     }
 
-    public function ensureDefaultRoom(): ConcordRoom
-    {
-        // Purge any legacy default 2 mock agents that were seeded automatically in earlier versions
-        ConcordParticipant::query()
-            ->whereIn('device_name', ['User-1-Workstation', 'User-2-Laptop', 'User-1-Computer', 'User-2-Computer'])
-            ->whereIn('name', ['Claude Code - User 1', 'Antigravity Gemini - User 2', 'Antigravity - User 2'])
-            ->delete();
-
-        $existing = ConcordRoom::oldest('created_at')->first();
-
-        if ($existing) {
-            return $existing;
-        }
-
-        return ConcordRoom::create([
-            'title' => 'Concord Multi-Agent Shared Workspace',
-            'description' => 'Central VPS Context Memory & Multi-Agent Group Chat. Each user must connect their local MCP first before prompting. All file edits execute on each user\'s own computer.',
-            'owner_email' => 'bryankunhahaha@gmail.com',
-            'access_mode' => 'invite_only',
-            'status' => 'active',
-            'status_detail' => 'Room initialized - 0 MCP agents connected. Connect your local MCP first to unlock prompting.',
-            'shared_memory' => [
-                [
-                    'id' => 'mem_arch_1',
-                    'key' => 'execution_topology',
-                    'category' => 'architecture',
-                    'content' => 'VPS holds ONLY shared context memory, session state, and agent-to-agent group chat. Each user connects their local MCP first to unlock prompting, and all file edits execute on each user\'s local computer.',
-                    'author_agent' => 'Concord Security Sandbox',
-                    'author_user' => 'System',
-                    'updated_at' => now()->toIso8601String(),
-                ],
-            ],
-            'active_claims' => [],
-        ]);
-    }
-
     public function createRoom(array $data): ConcordRoom
     {
         $room = ConcordRoom::create([
@@ -135,6 +100,69 @@ class ConcordHubService
         ]);
 
         return $room->load(['participants', 'invites', 'messages', 'localTasks']);
+    }
+
+    /**
+     * The group chat that belongs to a deployed VPS session, plus the session's own agent seat in it.
+     */
+    public function createSessionRoom(string $title, string $ownerEmail, string $sessionName): ConcordRoom
+    {
+        $room = $this->createRoom([
+            'title' => $title,
+            'owner_email' => $ownerEmail,
+            'description' => "Group chat for the VPS session {$title}. Invite people by email; their agents connect through this group's MCP link.",
+        ]);
+
+        $room->participants()->create([
+            'kind' => 'agent',
+            'name' => "{$title} (VPS)",
+            'user_name' => $title,
+            'account_email' => strtolower($ownerEmail),
+            'device_name' => self::vpsDevice($sessionName),
+            'execution_mode' => 'mcp_connected',
+            'provider' => 'vps',
+            'model' => 'claude',
+            'avatar' => 'VPS',
+            'color' => '#ff5722',
+            'role_prompt' => 'Claude Code session running on the VPS',
+            'status' => 'idle',
+            'last_seen_at' => now(),
+        ]);
+
+        return $room;
+    }
+
+    public static function vpsDevice(string $sessionName): string
+    {
+        return "vps-{$sessionName}";
+    }
+
+    /**
+     * Inline --mcp-config and --settings JSON for a Claude Code session launched on this host,
+     * so it joins its group with the same MCP tools and activity hooks a laptop gets from the connector.
+     *
+     * @return array{0: string, 1: string}
+     */
+    public function vpsClaudeConfig(ConcordRoom $room, string $ownerEmail, string $sessionName, string $title): array
+    {
+        $url = rtrim((string) config('agenthost.hub_url'), '/')."/api/concord/mcp/{$room->mcp_token}?".http_build_query([
+            'user_email' => strtolower($ownerEmail),
+            'user_name' => $title,
+            'device_name' => self::vpsDevice($sessionName),
+        ]);
+        $events = str_replace('?', '/events?', $url);
+        $post = "curl -s -m 3 -X POST -H 'Content-Type: application/json' --data-binary @- '{$events}'";
+        $report = ['type' => 'command', 'command' => "{$post} >/dev/null 2>&1 || true", 'timeout' => 5];
+        $stop = ['type' => 'command', 'command' => str_replace('-s -m 3', '-sf -m 8', $post).' 2>/dev/null || true', 'timeout' => 10];
+
+        $mcp = ['mcpServers' => ['concord' => ['type' => 'http', 'url' => $url]]];
+        $settings = ['hooks' => [
+            'UserPromptSubmit' => [['hooks' => [$report]]],
+            'PreToolUse' => [['matcher' => '*', 'hooks' => [$report]]],
+            'Stop' => [['hooks' => [$stop]]],
+        ]];
+
+        return [json_encode($mcp, JSON_UNESCAPED_SLASHES), json_encode($settings, JSON_UNESCAPED_SLASHES)];
     }
 
     public function upsertMemory(ConcordRoom $room, array $entry, bool $postMessage = true): array
@@ -293,7 +321,7 @@ class ConcordHubService
         foreach ($recipients as $agent) {
             $isOwner = $verifiedEmail !== '' && strtolower((string) $agent->account_email) === $verifiedEmail;
 
-            $room->localTasks()->create([
+            $task = $room->localTasks()->create([
                 'target_participant_id' => $agent->id,
                 'target_agent_name' => $agent->name,
                 'target_device' => $agent->device_name,
@@ -304,6 +332,14 @@ class ConcordHubService
                 'status' => 'queued',
                 'result_summary' => "From {$senderName} ({$senderDevice})",
             ]);
+
+            // A VPS session is typed into right away; its Stop hook posts the reply when it finishes.
+            if ($isOwner && $agent->agent_session_id && ($session = AgentSession::find($agent->agent_session_id))) {
+                if ($this->claimTasks($agent)->isNotEmpty()) {
+                    $agent->recordActivity('prompt', "Prompt from {$senderName} via Concord", $text);
+                    app(AgentSessionManager::class)->prompt($session, $text);
+                }
+            }
         }
 
         return $room->fresh(['participants', 'invites', 'messages', 'localTasks']);

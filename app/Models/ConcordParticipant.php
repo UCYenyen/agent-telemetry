@@ -34,6 +34,7 @@ class ConcordParticipant extends Model
         'claimed_files',
         'local_modified_files',
         'last_seen_at',
+        'agent_session_id',
     ];
 
     protected function casts(): array

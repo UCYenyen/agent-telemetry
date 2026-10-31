@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
@@ -22,6 +23,7 @@ class ConcordRoom extends Model
         'status_detail',
         'shared_memory',
         'active_claims',
+        'agent_session_id',
     ];
 
     protected static function booted(): void
@@ -45,6 +47,11 @@ class ConcordRoom extends Model
     public function invites(): HasMany
     {
         return $this->hasMany(ConcordRoomInvite::class);
+    }
+
+    public function agentSession(): BelongsTo
+    {
+        return $this->belongsTo(AgentSession::class);
     }
 
     public function participants(): HasMany

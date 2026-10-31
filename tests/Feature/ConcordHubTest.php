@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ConcordRoom;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Tests\TestCase;
 
 class ConcordHubTest extends TestCase
@@ -37,16 +38,33 @@ class ConcordHubTest extends TestCase
         ]);
     }
 
-    public function test_state_creates_default_concord_room_and_hides_vps_sessions_from_non_admin(): void
+    /** Deploys a VPS session as the admin; its group chat is the room under test. */
+    protected function deployGroup(string $title = 'Concord Test'): ConcordRoom
     {
-        $adminRes = $this->authenticateAdmin()->getJson('/api/state');
-        $adminRes->assertOk()
-            ->assertJsonPath('user.role', 'admin')
-            ->assertJsonPath('concord.rooms.0.title', 'Concord Multi-Agent Shared Workspace');
+        Process::fake();
+        $session = $this->authenticateAdmin()
+            ->postJson('/api/sessions', ['title' => $title, 'agent' => 'claude', 'workdir' => '/tmp'])
+            ->assertCreated();
 
-        // Rooms start empty: each user connects their own MCP agent before prompting.
-        $room = ConcordRoom::firstOrFail();
-        $this->assertSame(0, $room->participants()->count());
+        return ConcordRoom::where('agent_session_id', $session->json('id'))->firstOrFail();
+    }
+
+    public function test_group_chats_are_the_deployed_sessions_and_vps_sessions_stay_hidden_from_non_admin(): void
+    {
+        // No default room any more, and stray standalone rooms are not listed.
+        ConcordRoom::create(['title' => 'Old shared workspace']);
+        $this->authenticateAdmin()->getJson('/api/state')
+            ->assertOk()
+            ->assertJsonPath('user.role', 'admin')
+            ->assertJsonPath('concord.rooms', []);
+
+        $room = $this->deployGroup();
+        $this->authenticateAdmin()->getJson('/api/state')
+            ->assertJsonCount(1, 'concord.rooms')
+            ->assertJsonPath('concord.rooms.0.title', 'Concord Test');
+
+        // The group starts with its own VPS session as the only agent.
+        $this->assertSame(1, $room->participants()->count());
 
         // Non-admin user cannot view or create VPS Fleet sessions
         $regularRes = $this->authenticateRegularUser()->getJson('/api/state');
@@ -66,8 +84,7 @@ class ConcordHubTest extends TestCase
 
     public function test_three_role_rbac_and_link_edit_bypass_work(): void
     {
-        $this->authenticateAdmin()->getJson('/api/state');
-        $room = ConcordRoom::firstOrFail();
+        $room = $this->deployGroup();
 
         // 1. Admin restricts room to invite_only
         $this->authenticateAdmin()->patchJson("/api/concord/rooms/{$room->id}", [
@@ -127,14 +144,14 @@ class ConcordHubTest extends TestCase
     {
         Http::fake();
 
-        $this->authenticateAdmin()->getJson('/api/state');
-        $room = ConcordRoom::firstOrFail();
+        $room = $this->deployGroup();
 
         $this->authenticateAdmin()->patchJson("/api/concord/rooms/{$room->id}", [
             'access_mode' => 'link_edit',
         ])->assertOk();
 
         // Prompting is locked until the sender has connected an MCP agent.
+        $this->flushSession();
         $this->postJson("/api/concord/shared/{$room->share_token}/messages", [
             'sender_name' => 'User 1 (Bryan)',
             'body' => 'Prompt before connecting MCP',
@@ -164,7 +181,7 @@ class ConcordHubTest extends TestCase
         $response->assertOk();
 
         $room->refresh();
-        $tasks = $room->localTasks()->orderBy('created_at')->get();
+        $tasks = $room->localTasks()->where('target_device', 'not like', 'vps-%')->orderBy('created_at')->get();
         $this->assertCount(2, $tasks);
         $this->assertSame(['prompt', 'message'], $tasks->pluck('kind')->all());
         // No reply is made up on an agent's behalf.
@@ -196,8 +213,7 @@ class ConcordHubTest extends TestCase
 
     public function test_remote_mcp_endpoint_exposes_shared_memory_tools(): void
     {
-        $this->authenticateAdmin()->getJson('/api/state');
-        $room = ConcordRoom::firstOrFail();
+        $room = $this->deployGroup();
 
         $this->postJson("/api/concord/mcp/{$room->mcp_token}", [
             'jsonrpc' => '2.0',

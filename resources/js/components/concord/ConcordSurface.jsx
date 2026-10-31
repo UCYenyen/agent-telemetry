@@ -8,13 +8,11 @@ import SharedMemoryPanel from './SharedMemoryPanel';
 import ShareRoomModal from './ShareRoomModal';
 import ConnectDeviceModal from './ConnectDeviceModal';
 
-export default function ConcordSurface({ initialFullscreen = false, onOpenConsole }) {
+export default function ConcordSurface({ initialFullscreen = false, onOpenConsole, onDeploy }) {
     const { state, reload, toast, sharedToken } = useApp();
     const rooms = state?.concord?.rooms || [];
     const currentUser = state?.user || null;
     const isAdmin = Boolean(currentUser?.role === 'admin' || currentUser?.is_admin);
-    // Sessions deployed on this VPS (admin only) can be prompted from any room.
-    const vpsSessions = isAdmin && !sharedToken ? state?.sessions || [] : [];
 
     const [selectedRoomId, setSelectedRoomId] = useState(null);
     const [roomDetail, setRoomDetail] = useState(null);
@@ -22,8 +20,6 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
     const [shareModalOpen, setShareModalOpen] = useState(false);
     const [connectModalOpen, setConnectModalOpen] = useState(false);
     const [sending, setSending] = useState(false);
-    const [newRoomTitle, setNewRoomTitle] = useState('');
-    const [creatingRoom, setCreatingRoom] = useState(false);
     const [deletingRoom, setDeletingRoom] = useState(false);
     const [sideTab, setSideTab] = useState('chat');
     const [localParticipantId, setLocalParticipantId] = useState('');
@@ -41,7 +37,8 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
     const [emailInput, setEmailInput] = useState(visitorEmail);
 
     useEffect(() => {
-        if (!selectedRoomId && rooms.length > 0) {
+        // Fall back to the newest group when nothing is picked or the picked one was deleted.
+        if (rooms.length > 0 && !rooms.some((r) => r.id === selectedRoomId)) {
             setSelectedRoomId(rooms[0].id);
         }
     }, [rooms, selectedRoomId]);
@@ -107,20 +104,6 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
 
     const handleSendPrompt = async (payload) => {
         if (!roomDetail) return;
-        if (String(payload.target_agent).startsWith('vps:')) {
-            const sessionId = payload.target_agent.slice(4);
-            setSending(true);
-            try {
-                await api.post(`/api/sessions/${sessionId}/messages`, { text: payload.content });
-                toast('Sent to the VPS session');
-                reload();
-            } catch (err) {
-                toast(err.message, 'error');
-            } finally {
-                setSending(false);
-            }
-            return;
-        }
         if (!hasConnectedMcp) {
             toast('Connect your local MCP agent first before prompting in the Group Chat.');
             setConnectModalOpen(true);
@@ -166,31 +149,12 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
         }
     };
 
-    const handleCreateRoom = async (event) => {
-        event.preventDefault();
-        if (!newRoomTitle.trim() || !isAdmin) return;
-        setCreatingRoom(true);
-        try {
-            const created = await api.post('/api/concord/rooms', {
-                title: newRoomTitle.trim(),
-                access_mode: 'invite_only',
-            });
-            setNewRoomTitle('');
-            setSelectedRoomId(created.id);
-            setRoomDetail(created);
-            reload();
-            toast(`Created group chat project "${created.title}" (0 agents connected - connect MCP to begin)`);
-        } catch (err) {
-            toast(err.message, 'error');
-        } finally {
-            setCreatingRoom(false);
-        }
-    };
-
     const handleDeleteRoom = async () => {
         if (!roomDetail || !isAdmin) return;
         const confirmed = window.confirm(
-            `Delete group chat "${roomDetail.title}"?\n\nThis permanently removes its messages, shared memory, invites and connected MCP agents.`
+            roomDetail.agent_session_id
+                ? `Delete "${roomDetail.title}"?\n\nThis stops its VPS session and permanently removes the group chat with its messages, shared memory, invites and connected agents.`
+                : `Delete group chat "${roomDetail.title}"?\n\nThis permanently removes its messages, shared memory, invites and connected MCP agents.`
         );
         if (!confirmed) return;
         setDeletingRoom(true);
@@ -259,6 +223,22 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
         );
     }
 
+    if (!sharedToken && state && rooms.length === 0) {
+        return (
+            <section className="concord-surface room-view">
+                <div className="agent-board-empty">
+                    <h3>No group chats yet</h3>
+                    <p>Every session you deploy gets its own group chat, with its own MCP link, email invites and roles.</p>
+                    {isAdmin && onDeploy && (
+                        <button type="button" className="btn btn-primary" onClick={onDeploy}>
+                            Deploy a session
+                        </button>
+                    )}
+                </div>
+            </section>
+        );
+    }
+
     const canEdit = roomDetail ? roomDetail.permission === 'edit' : isAdmin;
     const participants = roomDetail?.participants || [];
     const myParticipantIds = new Set(myParticipants.map((p) => String(p.id)));
@@ -286,7 +266,6 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
                     )}
                     <p className="room-meta">
                         {participants.length} agent{participants.length === 1 ? '' : 's'}
-                        {vpsSessions.length > 0 && ` · ${vpsSessions.length} VPS session${vpsSessions.length === 1 ? '' : 's'}`}
                         {workingCount > 0 && <span className="room-meta-working"> · {workingCount} working</span>}
                         {accessLabel && ` · ${accessLabel}`}
                     </p>
@@ -317,7 +296,7 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
                                 </button>
                                 {isAdmin && !sharedToken && (
                                     <button type="button" className="btn btn-danger" onClick={handleDeleteRoom} disabled={deletingRoom}>
-                                        {deletingRoom ? 'Deleting…' : 'Delete room'}
+                                        {deletingRoom ? 'Deleting…' : roomDetail.agent_session_id ? 'Delete session and group' : 'Delete group'}
                                     </button>
                                 )}
                             </div>
@@ -326,29 +305,11 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
                 )}
             </header>
 
-            {!sharedToken && !fullscreen && isAdmin && (
-                <form className="room-new" onSubmit={handleCreateRoom}>
-                    <input
-                        type="text"
-                        className="input"
-                        aria-label="New room name"
-                        placeholder="New room name"
-                        value={newRoomTitle}
-                        onChange={(e) => setNewRoomTitle(e.target.value)}
-                    />
-                    <button type="submit" className="btn btn-sm" disabled={creatingRoom || !newRoomTitle.trim()}>
-                        Create room
-                    </button>
-                </form>
-            )}
-
             <div className="room-body">
                 <main className="room-agents" aria-label="Agents">
                     <AgentBoard
                         participants={participants}
                         tasks={roomDetail?.local_tasks || []}
-                        vpsSessions={vpsSessions}
-                        onOpenConsole={onOpenConsole}
                         selectedId={selectedAgentId}
                         onSelect={(id) => {
                             setSelectedAgentId(id);
@@ -359,6 +320,8 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
                         canEdit={canEdit}
                         onDisconnect={handleDisconnectParticipant}
                         onConnect={() => setConnectModalOpen(true)}
+                        onOpenConsole={onOpenConsole}
+                        onDeleteGroup={handleDeleteRoom}
                     />
                 </main>
 
@@ -381,7 +344,6 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
                         <RoomChat
                             room={roomDetail}
                             currentUser={currentUser}
-                            vpsSessions={vpsSessions}
                             target={selectedAgentId || 'all'}
                             onTargetChange={(value) => setSelectedAgentId(value === 'all' ? null : value)}
                             myParticipants={myParticipants}

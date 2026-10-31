@@ -39,7 +39,7 @@ export default function App() {
                 <ModeNav surface={surface} onChange={setSurface} />
                 {state && isAdmin && surface === 'deck' && <FleetDeck onOpenConsole={setConsoleSessionId} />}
                 {(surface === 'concord' || sharedToken || (state && !isAdmin)) && (
-                    <ConcordSurface initialFullscreen={Boolean(sharedToken)} onOpenConsole={setConsoleSessionId} />
+                    <ConcordSurface initialFullscreen={Boolean(sharedToken)} onOpenConsole={setConsoleSessionId} onDeploy={() => setDeploying(true)} />
                 )}
                 {state && isAdmin && surface === 'council' && <CouncilSurface />}
             </div>

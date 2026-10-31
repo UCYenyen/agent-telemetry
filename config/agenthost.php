@@ -133,4 +133,7 @@ return [
         'claude-haiku-4-5' => 'claude-sonnet-5-5-low',
     ],
 
+    // Where agents launched on this host reach the Concord hub (the app's port on the host loopback).
+    'hub_url' => env('CONCORD_HUB_URL', 'http://127.0.0.1:3116'),
+
 ];

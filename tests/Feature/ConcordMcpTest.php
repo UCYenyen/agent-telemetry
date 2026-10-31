@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ConcordRoom;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Tests\TestCase;
 
 class ConcordMcpTest extends TestCase
@@ -278,5 +279,63 @@ class ConcordMcpTest extends TestCase
         $this->assertStringNotContainsString('while true', $script);
         $this->assertStringNotContainsString('-p "${INSTRUCTIONS}"', $script);
         $this->assertFileExists(public_path('concord-channel.mjs'));
+    }
+
+    public function test_deploying_a_session_creates_its_group_and_connects_its_claude_to_it(): void
+    {
+        $typed = [];
+        Process::fake(function ($process) use (&$typed) {
+            if (($process->command[1] ?? '') === 'send-keys' && ($process->command[4] ?? '') !== 'Enter') {
+                $typed[] = $process->command[5] ?? '';
+            }
+
+            return Process::result(exitCode: ($process->command[1] ?? '') === 'has-session' ? 1 : 0);
+        });
+        $this->withSession(['agent_host.authenticated' => true, 'agent_host.user' => ['name' => 'Bryan', 'email' => 'bryan@dev.io', 'role' => 'admin']]);
+
+        $session = $this->postJson('/api/sessions', ['title' => 'Concord Test', 'agent' => 'claude', 'workdir' => '/tmp'])->assertCreated();
+        $room = ConcordRoom::where('agent_session_id', $session->json('id'))->firstOrFail();
+        $vps = $room->participants()->firstOrFail();
+
+        $this->assertSame('Concord Test', $room->title);
+        $this->assertSame('bryan@dev.io', $room->owner_email);
+        $this->assertSame($session->json('id'), $vps->agent_session_id);
+
+        // Claude is launched with this group's MCP server and hooks, as the VPS agent.
+        $launch = $typed[0];
+        $this->assertStringContainsString('--mcp-config', $launch);
+        $this->assertStringContainsString("/api/concord/mcp/{$room->mcp_token}?", $launch);
+        $this->assertStringContainsString('device_name='.urlencode('vps-'.$session->json('name')), $launch);
+        $this->assertStringContainsString('--settings', $launch);
+
+        // An MCP call from that Claude lands on the same agent, while the owner's laptop gets its own.
+        $this->postJson("/api/concord/mcp/{$room->mcp_token}?user_email=bryan@dev.io&device_name=vps-".$session->json('name'), ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'ping']);
+        $this->postJson("/api/concord/mcp/{$room->mcp_token}?user_email=bryan@dev.io&device_name=bryan-laptop", ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'ping']);
+        $this->assertSame(2, $room->participants()->count());
+        $this->assertSame('vps-'.$session->json('name'), $vps->fresh()->device_name);
+
+        // The owner's prompt is typed into the session straight away and shows as running.
+        $typed = [];
+        $this->postJson("/api/concord/shared/{$room->share_token}/messages", ['sender_email' => 'bryan@dev.io', 'target_participant_id' => $vps->id, 'body' => 'Summarise the repo'])->assertOk();
+        $this->assertSame(['Summarise the repo'], $typed);
+        $this->assertSame('running', $room->localTasks()->where('target_participant_id', $vps->id)->value('status'));
+
+        // Deleting the session deletes its group.
+        $this->deleteJson('/api/sessions/'.$session->json('id'))->assertNoContent();
+        $this->assertNull(ConcordRoom::find($room->id));
+    }
+
+    public function test_deleting_a_session_group_stops_its_session(): void
+    {
+        Process::fake();
+        $this->withSession(['agent_host.authenticated' => true, 'agent_host.user' => ['name' => 'Bryan', 'email' => 'bryan@dev.io', 'role' => 'admin']]);
+        $session = $this->postJson('/api/sessions', ['title' => 'Throwaway', 'agent' => 'claude', 'workdir' => '/tmp'])->assertCreated();
+        $room = ConcordRoom::where('agent_session_id', $session->json('id'))->firstOrFail();
+
+        $this->deleteJson("/api/concord/rooms/{$room->id}")->assertNoContent();
+
+        $this->assertNull(ConcordRoom::find($room->id));
+        $this->assertSoftDeleted('agent_sessions', ['id' => $session->json('id')]);
+        Process::assertRan(fn ($process) => ($process->command[1] ?? '') === 'kill-session');
     }
 }

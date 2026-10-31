@@ -42,8 +42,7 @@ function ChatMessage({ message, now }) {
 }
 
 // A prompt runs on an agent only when it comes from that agent's owner, signed in to Agent Host.
-function deliveryHint(targetAgent, participants, signedInEmail, vpsTarget) {
-    if (vpsTarget) return `Typed straight into the "${vpsTarget.title || vpsTarget.name}" terminal on the VPS. Open its console to watch the reply.`;
+function deliveryHint(targetAgent, participants, signedInEmail) {
     const owns = (agent) => signedInEmail !== '' && String(agent.account_email || '').toLowerCase() === signedInEmail;
     if (!targetAgent) {
         const mine = participants.filter(owns).length;
@@ -56,15 +55,12 @@ function deliveryHint(targetAgent, participants, signedInEmail, vpsTarget) {
         : `${targetAgent.user_name}'s agent gets this as a message. It won't run it automatically.`;
 }
 
-export default function RoomChat({ room, currentUser, vpsSessions = [], target, onTargetChange, myParticipants, hasConnectedMcp, canEdit, sending, onSendPrompt, onConnect }) {
+export default function RoomChat({ room, currentUser, target, onTargetChange, myParticipants, hasConnectedMcp, canEdit, sending, onSendPrompt, onConnect }) {
     const participants = room?.participants || [];
     const messages = room?.messages || [];
     const [text, setText] = useState('');
     const setTarget = onTargetChange;
     const targetAgent = participants.find((p) => String(p.id) === String(target)) || null;
-    const vpsTarget = vpsSessions.find((session) => `vps:${session.id}` === String(target)) || null;
-    // Without a connected agent you can still prompt VPS sessions, just not the room.
-    const needsVpsTarget = !hasConnectedMcp && !vpsTarget;
     const signedInEmail = String(currentUser?.email || '').trim().toLowerCase();
     const feedRef = useRef(null);
     const now = useNow(30000);
@@ -77,14 +73,14 @@ export default function RoomChat({ room, currentUser, vpsSessions = [], target, 
     const submit = (event) => {
         event.preventDefault();
         const content = text.trim();
-        if (!content || sending || needsVpsTarget || (!sender && !vpsTarget)) return;
+        if (!content || !sender || sending) return;
         onSendPrompt({
             content,
             body: content,
-            participant_id: sender?.id,
-            sender_name: sender?.user_name,
-            sender_email: sender?.account_email || null,
-            sender_device: sender?.device_name,
+            participant_id: sender.id,
+            sender_name: sender.user_name,
+            sender_email: sender.account_email || null,
+            sender_device: sender.device_name,
             target_agent: target,
         });
         setText('');
@@ -101,7 +97,7 @@ export default function RoomChat({ room, currentUser, vpsSessions = [], target, 
 
             {!canEdit ? (
                 <p className="chat-locked">View only. Ask an admin for edit access to post here.</p>
-            ) : !hasConnectedMcp && vpsSessions.length === 0 ? (
+            ) : !hasConnectedMcp ? (
                 <div className="chat-locked">
                     <span>Connect your agent to post in this room.</span>
                     <button type="button" className="btn btn-sm btn-primary" onClick={onConnect}>
@@ -113,40 +109,27 @@ export default function RoomChat({ room, currentUser, vpsSessions = [], target, 
                     <label className="chat-target">
                         <span>To</span>
                         <select className="select" value={target} onChange={(event) => setTarget(event.target.value)}>
-                            {hasConnectedMcp ? <option value="all">Everyone</option> : <option value="all" disabled>Pick a VPS session</option>}
-                            {hasConnectedMcp && participants.length > 0 && (
-                                <optgroup label="Connected agents">
-                                    {participants.map((p) => (
-                                        <option key={p.id} value={p.id}>
-                                            {p.user_name} ({p.device_name})
-                                        </option>
-                                    ))}
-                                </optgroup>
-                            )}
-                            {vpsSessions.length > 0 && (
-                                <optgroup label="VPS sessions">
-                                    {vpsSessions.map((session) => (
-                                        <option key={session.id} value={`vps:${session.id}`}>
-                                            {session.title || session.name} ({session.agent})
-                                        </option>
-                                    ))}
-                                </optgroup>
-                            )}
+                            <option value="all">Everyone</option>
+                            {participants.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                    {p.user_name} ({p.device_name})
+                                </option>
+                            ))}
                         </select>
                     </label>
-                    <p className="chat-hint">{needsVpsTarget ? 'Connect your agent to message the room, or pick a VPS session to prompt it.' : deliveryHint(targetAgent, participants, signedInEmail, vpsTarget)}</p>
+                    <p className="chat-hint">{deliveryHint(targetAgent, participants, signedInEmail)}</p>
                     <textarea
                         className="chat-input"
                         rows={2}
                         value={text}
                         aria-label="Message"
-                        placeholder={vpsTarget ? `Prompt ${vpsTarget.title || vpsTarget.name}…` : targetAgent ? `Prompt ${targetAgent.user_name} on ${targetAgent.device_name}…` : 'Message the room…'}
+                        placeholder={targetAgent ? `Prompt ${targetAgent.user_name} on ${targetAgent.device_name}…` : 'Message the room…'}
                         onChange={(event) => setText(event.target.value)}
                         onKeyDown={(event) => {
                             if (event.key === 'Enter' && !event.shiftKey) submit(event);
                         }}
                     />
-                    <button type="submit" className="btn btn-sm btn-primary" disabled={sending || !text.trim() || needsVpsTarget}>
+                    <button type="submit" className="btn btn-sm btn-primary" disabled={sending || !text.trim()}>
                         {sending ? 'Sending…' : 'Send'}
                     </button>
                 </form>

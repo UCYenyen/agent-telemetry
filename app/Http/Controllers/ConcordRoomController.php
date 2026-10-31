@@ -6,6 +6,7 @@ use App\Models\ConcordParticipant;
 use App\Models\ConcordRoom;
 use App\Models\ConcordRoomInvite;
 use App\Models\User;
+use App\Services\AgentSessionManager;
 use App\Services\ConcordHubService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,12 +14,11 @@ use Illuminate\Http\Response;
 
 class ConcordRoomController extends Controller
 {
-    public function index(ConcordHubService $hub): JsonResponse
+    public function index(): JsonResponse
     {
-        $hub->ensureDefaultRoom();
-
         return response()->json(
             ConcordRoom::withCount(['participants', 'messages', 'invites', 'localTasks'])
+                ->whereNotNull('agent_session_id')
                 ->latest('updated_at')
                 ->get()
         );
@@ -45,10 +45,8 @@ class ConcordRoomController extends Controller
         return response()->json($this->formatRoom($room, $request), 201);
     }
 
-    public function show(Request $request, ConcordRoom $concordRoom, ConcordHubService $hub): JsonResponse
+    public function show(Request $request, ConcordRoom $concordRoom): JsonResponse
     {
-        $hub->ensureDefaultRoom();
-
         return response()->json($this->formatRoom($concordRoom, $request));
     }
 
@@ -67,10 +65,16 @@ class ConcordRoomController extends Controller
         return response()->json($this->formatRoom($concordRoom->fresh(), $request));
     }
 
-    public function destroy(Request $request, ConcordRoom $concordRoom): Response
+    public function destroy(Request $request, ConcordRoom $concordRoom, AgentSessionManager $manager): Response
     {
         $this->ensureAdmin($request);
-        $concordRoom->delete();
+
+        // A session's group and the session go together.
+        if ($concordRoom->agentSession) {
+            $manager->stop($concordRoom->agentSession);
+        } else {
+            $concordRoom->delete();
+        }
 
         return response()->noContent();
     }

@@ -405,10 +405,11 @@ TXT;
         }
 
         $userName = $user ?: explode('@', $email)[0];
+        // One agent per person per device: the same person's laptop and VPS session are separate agents.
         $existing = $room->participants()
             ->when($email !== '', fn ($q) => $q->whereRaw('LOWER(account_email) = ?', [$email]))
             ->when($email === '', fn ($q) => $q->whereRaw('LOWER(user_name) = ?', [strtolower($user)]))
-            ->when($device !== '', fn ($q) => $q->orderByRaw('CASE WHEN device_name = ? THEN 0 ELSE 1 END', [$device]))
+            ->when($device !== '', fn ($q) => $q->where('device_name', $device))
             ->first();
 
         if ($existing) {

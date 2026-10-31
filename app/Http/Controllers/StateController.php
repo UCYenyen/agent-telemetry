@@ -17,10 +17,8 @@ use Illuminate\Support\Facades\Schema;
 
 class StateController extends Controller
 {
-    public function __invoke(Request $request, OpenRouter $openRouter, ConcordHubService $concordHub): JsonResponse
+    public function __invoke(Request $request, OpenRouter $openRouter): JsonResponse
     {
-        $concordHub->ensureDefaultRoom();
-
         $sessionUser = $request->session()->get('agent_host.user', [
             'name' => 'UCYenyen',
             'username' => 'ucyenyen',
@@ -78,7 +76,9 @@ class StateController extends Controller
                 'rooms' => $isAdmin ? CouncilRoom::select(['id', 'title', 'status', 'updated_at'])->withCount('messages')->latest('updated_at')->get() : [],
             ],
             'concord' => [
+                // Group chats are the ones that belong to a deployed session.
                 'rooms' => ConcordRoom::query()
+                    ->whereNotNull('agent_session_id')
                     ->withCount(['participants', 'messages', 'invites', 'localTasks'])
                     ->latest('updated_at')
                     ->get(),

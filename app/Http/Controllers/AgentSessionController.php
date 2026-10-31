@@ -29,6 +29,7 @@ class AgentSessionController extends Controller
             $data['model'] ?? null,
             $data['workdir'],
             $data['use_openrouter'] ?? false,
+            (string) data_get($request->session()->get('agent_host.user'), 'email', ''),
         );
 
         return response()->json($session, 201);

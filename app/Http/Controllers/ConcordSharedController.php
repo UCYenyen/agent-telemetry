@@ -15,10 +15,8 @@ use Illuminate\Http\Response;
 
 class ConcordSharedController extends Controller
 {
-    public function show(Request $request, string $token, ConcordHubService $hub): JsonResponse
+    public function show(Request $request, string $token): JsonResponse
     {
-        $hub->ensureDefaultRoom();
-
         [$room, $invite, $permission, $projectRole, $bypassedByLink, $viewerEmail] = $this->resolveRoomAccess($request, $token);
         if (! $room) {
             return response()->json([

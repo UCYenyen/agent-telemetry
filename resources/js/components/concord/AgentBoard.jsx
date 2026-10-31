@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useApp } from '../../context/AppContext';
-import { api } from '../../lib/api';
 
 const WORKING_STATUSES = ['working', 'thinking', 'editing_local'];
 const WORKING_WINDOW_MS = 5 * 60 * 1000;
@@ -25,6 +23,8 @@ export function timeAgo(value, now) {
 }
 
 export function presenceOf(participant, now) {
+    // A deployed VPS session is always there; it is only away once its session is gone.
+    if (participant.agent_session_id && !WORKING_STATUSES.includes(participant.status)) return 'idle';
     const seenAgo = participant.last_seen_at ? now - Date.parse(participant.last_seen_at) : Infinity;
     if (WORKING_STATUSES.includes(participant.status) && seenAgo < WORKING_WINDOW_MS) return 'working';
     if (seenAgo < IDLE_WINDOW_MS) return 'idle';
@@ -36,7 +36,8 @@ const PRESENCE_ORDER = { working: 0, idle: 1, away: 2 };
 
 const TASK_LABEL = { queued: 'Waiting', running: 'Running', completed: 'Done', failed: 'Failed' };
 
-function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect, now, selected, onSelect, prompts }) {
+function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect, now, selected, onSelect, prompts, onOpenConsole, onDeleteGroup }) {
+    const isVps = Boolean(participant.agent_session_id);
     const [promptOpen, setPromptOpen] = useState(false);
     const [historyOpen, setHistoryOpen] = useState(false);
     const activity = [...(participant.activity || [])].reverse();
@@ -55,11 +56,12 @@ function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect,
                 <div className="agent-identity">
                     <div className="agent-name">
                         {participant.user_name}
-                        {isMine && <span className="agent-you">you</span>}
+                        {isVps ? <span className="agent-you">VPS</span> : isMine && <span className="agent-you">you</span>}
                     </div>
                     <div className="agent-sub">
-                        {participant.device_name}
-                        {participant.provider && participant.provider !== 'mcp' ? ` · ${participant.provider}` : ''}
+                        {isVps
+                            ? `Claude Code on the VPS · ${participant.model || 'default model'}`
+                            : `${participant.device_name}${participant.provider && participant.provider !== 'mcp' ? ` · ${participant.provider}` : ''}`}
                     </div>
                 </div>
                 <div className="agent-state">
@@ -148,75 +150,31 @@ function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect,
                         {selected ? 'Prompting this agent' : 'Prompt this agent'}
                     </button>
                 )}
-                {canDisconnect && (
-                    <button type="button" className="agent-link danger" onClick={() => onDisconnect(participant)}>
-                        Disconnect
-                    </button>
-                )}
-            </footer>
-        </article>
-    );
-}
-
-// Agent sessions deployed on this VPS (Fleet). Prompts go straight to the session's terminal.
-function VpsSessionCard({ session, selected, onSelect, onOpenConsole }) {
-    const { run } = useApp();
-    const working = session.state === 'working' || session.state === 'fallback_active';
-    const presence = working ? 'working' : 'idle';
-
-    const remove = () => {
-        if (window.confirm(`Delete the VPS session "${session.title || session.name}"? Its tmux session on the VPS is stopped.`)) {
-            if (selected) onSelect?.(null);
-            run(() => api.delete(`/api/sessions/${session.id}`), 'Session deleted');
-        }
-    };
-
-    return (
-        <article className={`agent-card presence-${presence}${selected ? ' selected' : ''}`} aria-label={`${session.title}, VPS session, ${PRESENCE_LABEL[presence]}`}>
-            <header className="agent-card-head">
-                <span className={`agent-dot ${presence}`} aria-hidden="true" />
-                <div className="agent-identity">
-                    <div className="agent-name">
-                        {session.title || session.name}
-                        <span className="agent-you">VPS</span>
-                    </div>
-                    <div className="agent-sub">
-                        {session.agent} · {session.model || 'default model'}
-                    </div>
-                </div>
-                <div className="agent-state">
-                    <span className={`agent-state-label ${presence}`}>{PRESENCE_LABEL[presence]}</span>
-                </div>
-            </header>
-
-            <section className="agent-block">
-                <div className="agent-block-label">Prompt</div>
-                {session.last_prompt ? <p className="agent-prompt clamped">{session.last_prompt}</p> : <p className="agent-empty">No prompt yet.</p>}
-            </section>
-
-            <footer className="agent-card-foot">
-                {onSelect && (
-                    <button type="button" className={`btn btn-sm${selected ? ' btn-primary' : ''}`} aria-pressed={selected} onClick={() => onSelect(selected ? null : `vps:${session.id}`)}>
-                        {selected ? 'Prompting this agent' : 'Prompt this agent'}
-                    </button>
-                )}
-                {onOpenConsole && (
-                    <button type="button" className="btn btn-sm" onClick={() => onOpenConsole(session.id)}>
+                {isVps && onOpenConsole && (
+                    <button type="button" className="btn btn-sm" onClick={() => onOpenConsole(participant.agent_session_id)}>
                         Open console
                     </button>
                 )}
-                <button type="button" className="agent-link danger" onClick={remove}>
-                    Delete session
-                </button>
+                {isVps
+                    ? onDeleteGroup && (
+                          <button type="button" className="agent-link danger" onClick={onDeleteGroup}>
+                              Delete session
+                          </button>
+                      )
+                    : canDisconnect && (
+                          <button type="button" className="agent-link danger" onClick={() => onDisconnect(participant)}>
+                              Disconnect
+                          </button>
+                      )}
             </footer>
         </article>
     );
 }
 
-export default function AgentBoard({ participants, vpsSessions = [], tasks = [], myParticipantIds, isAdmin, canEdit, onDisconnect, onConnect, onOpenConsole, selectedId, onSelect }) {
+export default function AgentBoard({ participants, tasks = [], myParticipantIds, isAdmin, canEdit, onDisconnect, onConnect, onOpenConsole, onDeleteGroup, selectedId, onSelect }) {
     const now = useNow();
 
-    if (participants.length === 0 && vpsSessions.length === 0) {
+    if (participants.length === 0) {
         return (
             <div className="agent-board-empty">
                 <h3>No agents connected yet</h3>
@@ -232,19 +190,16 @@ export default function AgentBoard({ participants, vpsSessions = [], tasks = [],
 
     const cards = participants
         .map((participant) => ({ participant, presence: presenceOf(participant, now), isMine: myParticipantIds.has(String(participant.id)) }))
-        .sort((a, b) => PRESENCE_ORDER[a.presence] - PRESENCE_ORDER[b.presence] || Number(b.isMine) - Number(a.isMine));
+        // The group's own VPS session first, then by activity.
+        .sort(
+            (a, b) =>
+                Number(Boolean(b.participant.agent_session_id)) - Number(Boolean(a.participant.agent_session_id)) ||
+                PRESENCE_ORDER[a.presence] - PRESENCE_ORDER[b.presence] ||
+                Number(b.isMine) - Number(a.isMine),
+        );
 
     return (
         <div className="agent-board">
-            {vpsSessions.map((session) => (
-                <VpsSessionCard
-                    key={session.id}
-                    session={session}
-                    selected={String(selectedId) === `vps:${session.id}`}
-                    onSelect={onSelect}
-                    onOpenConsole={onOpenConsole}
-                />
-            ))}
             {cards.map(({ participant, presence, isMine }) => (
                 <AgentCard
                     key={participant.id}
@@ -256,6 +211,8 @@ export default function AgentBoard({ participants, vpsSessions = [], tasks = [],
                     now={now}
                     selected={String(selectedId) === String(participant.id)}
                     onSelect={canEdit ? onSelect : null}
+                    onOpenConsole={onOpenConsole}
+                    onDeleteGroup={isAdmin ? onDeleteGroup : null}
                     prompts={tasks.filter((task) => task.kind === 'prompt' && String(task.target_participant_id) === String(participant.id)).slice(0, 3)}
                 />
             ))}

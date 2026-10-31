@@ -42,8 +42,13 @@ class AgentSessionManager
 
     public function __construct(private Tmux $tmux, private OpenRouter $openRouter) {}
 
-    public function start(string $title, string $agent, ?string $model, string $workdir, bool $useOpenRouter): AgentSession
+    /**
+     * Deploys a session and its group chat. A Claude session starts already connected to that
+     * group's MCP server and activity hooks, so it shows up on the board and takes prompts from it.
+     */
+    public function start(string $title, string $agent, ?string $model, string $workdir, bool $useOpenRouter, string $ownerEmail = ''): AgentSession
     {
+        $ownerEmail = strtolower($ownerEmail ?: 'bryankunhahaha@gmail.com');
         $defaults = Setting::read('defaults');
         $name = 'Agent_'.Str::lower(Str::random(8));
         $useOpenRouter = $useOpenRouter || $agent === 'openrouter';
@@ -54,11 +59,15 @@ class AgentSessionManager
             default => ['claude', $model ?: $defaults['claude_model']],
         };
 
-        if (! $useOpenRouter && ! $this->tmux->create($name, $this->command($agent, $model, $title), $workdir)) {
+        $hub = app(ConcordHubService::class);
+        $room = $hub->createSessionRoom($title, $ownerEmail, $name);
+        $concordFlags = $agent === 'claude' ? $hub->vpsClaudeConfig($room, $ownerEmail, $name, $title) : null;
+
+        if (! $useOpenRouter && ! $this->tmux->create($name, $this->command($agent, $model, $title, $concordFlags), $workdir)) {
             Log::warning("[session] tmux session creation failed for {$name}");
         }
 
-        return AgentSession::create([
+        $session = AgentSession::create([
             'name' => $name,
             'title' => $title,
             'agent' => $agent,
@@ -66,6 +75,11 @@ class AgentSessionManager
             'use_openrouter' => $useOpenRouter,
             'fallback_enabled' => (bool) $defaults['fallback_enabled'],
         ]);
+
+        $room->update(['agent_session_id' => $session->id]);
+        $room->participants()->update(['agent_session_id' => $session->id, 'model' => $model]);
+
+        return $session;
     }
 
     public function prompt(AgentSession $session, string $text): bool
@@ -129,9 +143,13 @@ class AgentSessionManager
             : ['use_openrouter' => false, 'agent' => 'claude', 'model' => $isOpenRouterModel ? $defaults['claude_model'] : $session->model]);
     }
 
+    /**
+     * Stops the session and deletes its group chat with everything in it.
+     */
     public function stop(AgentSession $session): void
     {
         $this->tmux->kill($session->name);
+        $session->room?->delete();
         $session->delete();
     }
 
@@ -338,7 +356,7 @@ class AgentSessionManager
         }
     }
 
-    private function command(string $agent, string $model, string $title): string
+    private function command(string $agent, string $model, string $title, ?array $concordFlags = null): string
     {
         if ($agent === 'antigravity') {
             return sprintf('%s --mode accept-edits --model %s --remote-control', config('agenthost.agy_bin'), escapeshellarg($model));
@@ -347,8 +365,11 @@ class AgentSessionManager
         $defaults = Setting::read('defaults');
         [$cliModel, $effort] = $this->splitClaudeModel($model);
 
+        [$mcpConfig, $settings] = $concordFlags ?? [null, null];
+
         return sprintf(
-            'claude --permission-mode %s --model %s --effort %s --autocompact auto -n %s --remote-control %s',
+            'claude %s--permission-mode %s --model %s --effort %s --autocompact auto -n %s --remote-control %s',
+            $mcpConfig ? sprintf('--mcp-config %s --settings %s ', escapeshellarg($mcpConfig), escapeshellarg($settings)) : '',
             escapeshellarg($defaults['permission_mode']),
             escapeshellarg($cliModel),
             escapeshellarg($effort ?? $defaults['claude_effort']),

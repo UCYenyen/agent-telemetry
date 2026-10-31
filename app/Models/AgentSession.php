@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class AgentSession extends Model
@@ -41,6 +42,11 @@ class AgentSession extends Model
             'fallback_triggered' => 'boolean',
             'fallback_stage' => 'integer',
         ];
+    }
+
+    public function room(): HasOne
+    {
+        return $this->hasOne(ConcordRoom::class);
     }
 
     public function messages(): HasMany
