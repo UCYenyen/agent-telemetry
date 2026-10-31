@@ -1839,3 +1839,73 @@
 .chat-note time,
 .chat-msg-head time,
 .memory-item-head time { white-space: nowrap; flex: none; }
+
+/* Agent selection and prompts sent from Concord */
+.agent-card.selected {
+    border-color: var(--claude);
+    box-shadow: 0 0 0 1px var(--claude);
+}
+
+.agent-card-foot {
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.agent-card-foot .agent-link.danger { margin-left: auto; }
+
+.agent-tasks {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.agent-task {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.agent-task-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.agent-task-status { font-weight: 600; }
+.agent-task-status.queued { color: var(--warn); }
+.agent-task-status.running { color: var(--ok); }
+.agent-task-status.completed { color: var(--muted); }
+.agent-task-status.failed { color: var(--danger); }
+
+.agent-task-text,
+.agent-task-reply {
+    margin: 6px 0 0;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.agent-task-reply {
+    color: var(--muted);
+    padding-left: 8px;
+    border-left: 1px solid var(--border);
+}
+
+.chat-hint {
+    grid-column: 1 / -1;
+    margin: 0;
+    font-size: 0.78rem;
+    color: var(--muted);
+}

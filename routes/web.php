@@ -35,6 +35,7 @@ Route::prefix('api/concord')->group(function () {
     Route::post('shared/{token}/tasks/{task}/complete', [ConcordSharedController::class, 'completeTask']);
     Route::post('mcp/{mcpToken}', [ConcordSharedController::class, 'mcp']);
     Route::post('mcp/{mcpToken}/events', [ConcordSharedController::class, 'mcpEvent']);
+    Route::post('mcp/{mcpToken}/inbox', [ConcordSharedController::class, 'mcpInbox']);
     Route::match(['get', 'delete'], 'mcp/{mcpToken}', [ConcordSharedController::class, 'mcpMethodNotAllowed']);
 });
 

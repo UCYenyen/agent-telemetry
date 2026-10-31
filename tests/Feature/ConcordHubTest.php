@@ -149,7 +149,11 @@ class ConcordHubTest extends TestCase
             ])->assertOk();
         }
 
-        $response = $this->postJson("/api/concord/shared/{$room->share_token}/messages", [
+        // Signed in as User 1: the prompt runs on User 1's agent and reaches User 2's only as a message.
+        $response = $this->withSession([
+            'agent_host.authenticated' => true,
+            'agent_host.user' => ['name' => 'User 1 (Bryan)', 'email' => 'user1@partner.dev', 'role' => 'admin'],
+        ])->postJson("/api/concord/shared/{$room->share_token}/messages", [
             'sender_name' => 'User 1 (Bryan)',
             'sender_email' => 'user1@partner.dev',
             'sender_device' => 'User-1-Workstation',
@@ -162,13 +166,18 @@ class ConcordHubTest extends TestCase
         $room->refresh();
         $tasks = $room->localTasks()->orderBy('created_at')->get();
         $this->assertCount(2, $tasks);
-        $this->assertSame(['message', 'message'], $tasks->pluck('kind')->all());
+        $this->assertSame(['prompt', 'message'], $tasks->pluck('kind')->all());
         // No reply is made up on an agent's behalf.
         $this->assertSame(0, $room->messages()->whereIn('kind', ['agent_talk', 'handoff'])->count());
 
         // Task 1 targets User 1's computer, Task 2 targets User 2's computer
         $this->assertSame('User-1-Workstation', $tasks[0]->target_device);
         $this->assertSame('User-2-Laptop', $tasks[1]->target_device);
+
+        // User 2's agent can't be handed the message as a runnable task.
+        $this->getJson("/api/concord/shared/{$room->share_token}/tasks/pull?participant_id={$tasks[1]->target_participant_id}")
+            ->assertOk()
+            ->assertJsonPath('task', null);
 
         // User 1's local connector pulls and completes its queued task
         $pullRes = $this->getJson("/api/concord/shared/{$room->share_token}/tasks/pull?participant_id={$tasks[0]->target_participant_id}")

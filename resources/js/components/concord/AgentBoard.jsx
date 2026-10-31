@@ -32,7 +32,9 @@ export function presenceOf(participant, now) {
 const PRESENCE_LABEL = { working: 'Working', idle: 'Idle', away: 'Away' };
 const PRESENCE_ORDER = { working: 0, idle: 1, away: 2 };
 
-function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect, now }) {
+const TASK_LABEL = { queued: 'Waiting', running: 'Running', completed: 'Done', failed: 'Failed' };
+
+function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect, now, selected, onSelect, prompts }) {
     const [promptOpen, setPromptOpen] = useState(false);
     const [historyOpen, setHistoryOpen] = useState(false);
     const activity = [...(participant.activity || [])].reverse();
@@ -42,7 +44,10 @@ function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect,
     const longPrompt = prompt.length > 280 || prompt.split('\n').length > 4;
 
     return (
-        <article className={`agent-card presence-${presence}${isMine ? ' mine' : ''}`} aria-label={`${participant.user_name}, ${PRESENCE_LABEL[presence]}`}>
+        <article
+            className={`agent-card presence-${presence}${isMine ? ' mine' : ''}${selected ? ' selected' : ''}`}
+            aria-label={`${participant.user_name}, ${PRESENCE_LABEL[presence]}`}
+        >
             <header className="agent-card-head">
                 <span className={`agent-dot ${presence}`} aria-hidden="true" />
                 <div className="agent-identity">
@@ -87,6 +92,24 @@ function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect,
                 </p>
             </section>
 
+            {prompts.length > 0 && (
+                <section className="agent-block">
+                    <div className="agent-block-label">Sent from Concord</div>
+                    <ol className="agent-tasks">
+                        {prompts.map((task) => (
+                            <li key={task.id} className={`agent-task task-${task.status}`}>
+                                <div className="agent-task-head">
+                                    <span className={`agent-task-status ${task.status}`}>{TASK_LABEL[task.status] || task.status}</span>
+                                    <time dateTime={task.created_at}>{timeAgo(task.created_at, now)}</time>
+                                </div>
+                                <p className="agent-task-text">{task.instructions}</p>
+                                {task.reply && <p className="agent-task-reply">{task.reply}</p>}
+                            </li>
+                        ))}
+                    </ol>
+                </section>
+            )}
+
             {activity.length > 0 && (
                 <section className="agent-block">
                     <div className="agent-block-label">Recent activity</div>
@@ -117,18 +140,23 @@ function AgentCard({ participant, presence, isMine, canDisconnect, onDisconnect,
                 </section>
             )}
 
-            {canDisconnect && (
-                <footer className="agent-card-foot">
+            <footer className="agent-card-foot">
+                {onSelect && (
+                    <button type="button" className={`btn btn-sm${selected ? ' btn-primary' : ''}`} aria-pressed={selected} onClick={() => onSelect(selected ? null : participant.id)}>
+                        {selected ? 'Prompting this agent' : 'Prompt this agent'}
+                    </button>
+                )}
+                {canDisconnect && (
                     <button type="button" className="agent-link danger" onClick={() => onDisconnect(participant)}>
                         Disconnect
                     </button>
-                </footer>
-            )}
+                )}
+            </footer>
         </article>
     );
 }
 
-export default function AgentBoard({ participants, myParticipantIds, isAdmin, canEdit, onDisconnect, onConnect }) {
+export default function AgentBoard({ participants, tasks = [], myParticipantIds, isAdmin, canEdit, onDisconnect, onConnect, selectedId, onSelect }) {
     const now = useNow();
 
     if (participants.length === 0) {
@@ -160,6 +188,9 @@ export default function AgentBoard({ participants, myParticipantIds, isAdmin, ca
                     canDisconnect={Boolean(onDisconnect) && (isAdmin || isMine)}
                     onDisconnect={onDisconnect}
                     now={now}
+                    selected={String(selectedId) === String(participant.id)}
+                    onSelect={canEdit ? onSelect : null}
+                    prompts={tasks.filter((task) => task.kind === 'prompt' && String(task.target_participant_id) === String(participant.id)).slice(0, 3)}
                 />
             ))}
         </div>

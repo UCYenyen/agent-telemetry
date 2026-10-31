@@ -215,4 +215,68 @@ class ConcordMcpTest extends TestCase
         $this->assertSame('agent', $room->messages()->first()->sender_kind);
         $this->assertSame([], $room->fresh()->shared_memory ?? []);
     }
+
+    public function test_prompts_from_the_concord_ui_run_in_the_owners_local_claude_and_reply_back(): void
+    {
+        $room = $this->room();
+        $this->postJson($this->mcpUrl($room), ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'ping']);
+        $this->postJson($this->mcpUrl($room, 'user_email=ben@dev.io&user_name=Ben&device_name=ben-pc'), ['jsonrpc' => '2.0', 'id' => 1, 'method' => 'ping']);
+        $ana = $room->participants()->where('account_email', 'ana@dev.io')->firstOrFail();
+        $ben = $room->participants()->where('account_email', 'ben@dev.io')->firstOrFail();
+        $hook = fn (string $who) => "/api/concord/mcp/{$room->mcp_token}/events?user_email={$who}@dev.io";
+
+        // Ana, signed in to Agent Host, prompts her own agent and messages Ben's.
+        $this->withSession(['agent_host.authenticated' => true, 'agent_host.user' => ['name' => 'Ana', 'email' => 'ana@dev.io', 'role' => 'admin']]);
+        foreach ([$ana, $ben] as $target) {
+            $this->postJson("/api/concord/shared/{$room->share_token}/messages", [
+                'sender_email' => 'ana@dev.io',
+                'target_participant_id' => $target->id,
+                'body' => "Add a /health route for {$target->user_name}",
+            ])->assertOk();
+        }
+
+        // Ana's Claude Code finishes its current turn: the Stop hook hands it the prompt.
+        $this->postJson($hook('ana'), ['hook_event_name' => 'Stop', 'session_id' => 's1'])
+            ->assertOk()
+            ->assertJsonPath('decision', 'block')
+            ->assertSee('Add a /health route for Ana');
+        $this->assertSame('Add a /health route for Ana', $ana->fresh()->current_prompt);
+
+        // When that turn ends, its final answer is posted back to the room and nothing else is pending.
+        $this->postJson($hook('ana'), ['hook_event_name' => 'Stop', 'session_id' => 's1', 'last_assistant_message' => 'Added GET /health returning 200.'])
+            ->assertOk()
+            ->assertExactJson([]);
+        $task = $room->localTasks()->where('target_participant_id', $ana->id)->firstOrFail();
+        $this->assertSame('completed', $task->status);
+        $this->assertSame('Added GET /health returning 200.', $task->reply);
+        $this->assertSame('Added GET /health returning 200.', $room->messages()->where('participant_id', $ana->id)->latest('id')->value('content'));
+
+        // Ben's agent never runs Ana's text; it only reads it as context.
+        $this->postJson($hook('ben'), ['hook_event_name' => 'Stop'])->assertExactJson([]);
+        $this->postJson("/api/concord/mcp/{$room->mcp_token}/inbox?user_email=ben@dev.io")->assertJsonPath('prompts', []);
+        $this->postJson($this->mcpUrl($room, 'user_email=ben@dev.io&user_name=Ben&device_name=ben-pc'), ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/call', 'params' => ['name' => 'pull_local_tasks']])
+            ->assertSee('context only')
+            ->assertSee('Add a /health route for Ben');
+
+        // The channel bridge gets each prompt exactly once.
+        $this->postJson("/api/concord/shared/{$room->share_token}/messages", ['sender_email' => 'ana@dev.io', 'target_participant_id' => $ana->id, 'body' => 'Run the tests'])->assertOk();
+        $this->postJson("/api/concord/mcp/{$room->mcp_token}/inbox?user_email=ana@dev.io")
+            ->assertOk()
+            ->assertJsonPath('prompts.0.text', 'Run the tests');
+        $this->postJson("/api/concord/mcp/{$room->mcp_token}/inbox?user_email=ana@dev.io")->assertJsonPath('prompts', []);
+        $this->postJson($hook('ana'), ['hook_event_name' => 'Stop'])->assertExactJson([]);
+    }
+
+    public function test_connector_installs_the_stop_hook_and_channel_bridge_without_a_headless_runner(): void
+    {
+        $room = $this->room();
+        $script = $this->get('/connect/'.$room->share_token.'?user=Ana&email=ana@dev.io')->assertOk()->getContent();
+
+        $this->assertStringContainsString('/concord-channel.mjs" -o .concord/channel.mjs', $script);
+        $this->assertStringContainsString('data["mcpServers"]["concord-channel"]', $script);
+        $this->assertStringContainsString('post.replace("-s -m 3", "-sf -m 8")', $script);
+        $this->assertStringNotContainsString('while true', $script);
+        $this->assertStringNotContainsString('-p "${INSTRUCTIONS}"', $script);
+        $this->assertFileExists(public_path('concord-channel.mjs'));
+    }
 }

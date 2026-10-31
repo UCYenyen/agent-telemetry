@@ -41,11 +41,27 @@ function ChatMessage({ message, now }) {
     );
 }
 
-export default function RoomChat({ room, myParticipants, hasConnectedMcp, canEdit, sending, onSendPrompt, onConnect }) {
+// A prompt runs on an agent only when it comes from that agent's owner, signed in to Agent Host.
+function deliveryHint(targetAgent, participants, signedInEmail) {
+    const owns = (agent) => signedInEmail !== '' && String(agent.account_email || '').toLowerCase() === signedInEmail;
+    if (!targetAgent) {
+        const mine = participants.filter(owns).length;
+        return mine > 0
+            ? `Runs on your ${mine === 1 ? 'agent' : `${mine} agents`} when each finishes its current turn. Other people's agents get it as a message.`
+            : "Sent as a message. Agents read it but won't run it unless it comes from their owner.";
+    }
+    return owns(targetAgent)
+        ? `Runs in Claude Code on ${targetAgent.device_name} as soon as it finishes its current turn. The reply shows up here.`
+        : `${targetAgent.user_name}'s agent gets this as a message. It won't run it automatically.`;
+}
+
+export default function RoomChat({ room, currentUser, target, onTargetChange, myParticipants, hasConnectedMcp, canEdit, sending, onSendPrompt, onConnect }) {
     const participants = room?.participants || [];
     const messages = room?.messages || [];
     const [text, setText] = useState('');
-    const [target, setTarget] = useState('all');
+    const setTarget = onTargetChange;
+    const targetAgent = participants.find((p) => String(p.id) === String(target)) || null;
+    const signedInEmail = String(currentUser?.email || '').trim().toLowerCase();
     const feedRef = useRef(null);
     const now = useNow(30000);
     const sender = myParticipants[0] || null;
@@ -101,12 +117,13 @@ export default function RoomChat({ room, myParticipants, hasConnectedMcp, canEdi
                             ))}
                         </select>
                     </label>
+                    <p className="chat-hint">{deliveryHint(targetAgent, participants, signedInEmail)}</p>
                     <textarea
                         className="chat-input"
                         rows={2}
                         value={text}
                         aria-label="Message"
-                        placeholder="Message the room…"
+                        placeholder={targetAgent ? `Prompt ${targetAgent.user_name} on ${targetAgent.device_name}…` : 'Message the room…'}
                         onChange={(event) => setText(event.target.value)}
                         onKeyDown={(event) => {
                             if (event.key === 'Enter' && !event.shiftKey) submit(event);

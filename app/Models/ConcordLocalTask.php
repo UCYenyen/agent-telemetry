@@ -16,6 +16,7 @@ class ConcordLocalTask extends Model
         'target_agent_name',
         'target_device',
         'from_sender',
+        'from_email',
         'kind',
         'instructions',
         'context_memory_snapshot',
@@ -23,6 +24,9 @@ class ConcordLocalTask extends Model
         'status',
         'modified_files',
         'result_summary',
+        'reply',
+        'delivered_at',
+        'completed_at',
     ];
 
     protected function casts(): array
@@ -31,11 +35,18 @@ class ConcordLocalTask extends Model
             'context_memory_snapshot' => 'array',
             'file_patches' => 'array',
             'modified_files' => 'array',
+            'delivered_at' => 'datetime',
+            'completed_at' => 'datetime',
         ];
     }
 
     public function room(): BelongsTo
     {
         return $this->belongsTo(ConcordRoom::class, 'concord_room_id');
+    }
+
+    public function participant(): BelongsTo
+    {
+        return $this->belongsTo(ConcordParticipant::class, 'target_participant_id');
     }
 }

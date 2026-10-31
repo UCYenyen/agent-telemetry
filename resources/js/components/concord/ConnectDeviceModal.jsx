@@ -87,17 +87,19 @@ export default function ConnectDeviceModal({
     const mcpJson = (server) => JSON.stringify({ mcpServers: { concord: server } }, null, 2);
     const eventsUrl = personalizedMcpUrl.replace('?', '/events?');
     const hookCommand = { type: 'command', command: `curl -s -m 3 -X POST -H 'Content-Type: application/json' --data-binary @- '${eventsUrl}' >/dev/null 2>&1 || true`, timeout: 5 };
+    // The Stop hook prints the hub's answer, which hands Claude the next prompt sent from this UI.
+    const stopHookCommand = { type: 'command', command: `curl -sf -m 8 -X POST -H 'Content-Type: application/json' --data-binary @- '${eventsUrl}' 2>/dev/null || true`, timeout: 10 };
     const claudeHooksJson = JSON.stringify({
         hooks: {
             UserPromptSubmit: [{ hooks: [hookCommand] }],
             PreToolUse: [{ matcher: '*', hooks: [hookCommand] }],
-            Stop: [{ hooks: [hookCommand] }],
+            Stop: [{ hooks: [stopHookCommand] }],
         },
     }, null, 2);
     const clientConfigs = {
         claude: {
             label: 'Claude Code',
-            hint: 'Run in your project. The hooks block (in .claude/settings.local.json) shows your prompts and tool use live on the agent board; the one-line connector installs it for you.',
+            hint: 'Use the one-line connector above: it adds these hooks, which show your prompts and tool use on the agent board and run prompts you send from Concord when Claude finishes its current turn. To also wake an idle terminal session, start it with: claude --dangerously-load-development-channels server:concord-channel',
             text: `claude mcp add --transport http concord "${personalizedMcpUrl}"\n\n# .claude/settings.local.json (live prompt + activity)\n${claudeHooksJson}`,
         },
         antigravity: {

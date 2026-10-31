@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ConcordLocalTask;
 use App\Models\ConcordParticipant;
 use App\Models\ConcordRoom;
 use Illuminate\Support\Str;
@@ -248,8 +249,12 @@ class ConcordHubService
     }
 
     /**
-     * Posts a chat message and delivers it to the real connected agents as a queued task,
-     * which each agent fetches with the pull_local_tasks MCP tool. Nothing replies on an agent's behalf.
+     * Posts a chat message and queues it for the real connected agents. Nothing replies on an agent's behalf.
+     *
+     * A copy becomes a runnable "prompt" only for agents owned by the signed-in sender
+     * (verified_email from the Agent Host session); everyone else's agents get a plain "message"
+     * they can read with pull_local_tasks but never run automatically. This keeps room members
+     * from executing work on each other's computers.
      */
     public function sendPrompt(ConcordRoom $room, array $data): ConcordRoom
     {
@@ -263,6 +268,7 @@ class ConcordHubService
         }
         $fromAgent = (bool) ($data['from_agent'] ?? false);
         $senderParticipantId = $data['participant_id'] ?? null;
+        $verifiedEmail = $fromAgent ? '' : strtolower(trim((string) ($data['verified_email'] ?? '')));
 
         $room->messages()->create([
             'participant_id' => $fromAgent ? $senderParticipantId : null,
@@ -285,19 +291,92 @@ class ConcordHubService
             ->get();
 
         foreach ($recipients as $agent) {
+            $isOwner = $verifiedEmail !== '' && strtolower((string) $agent->account_email) === $verifiedEmail;
+
             $room->localTasks()->create([
                 'target_participant_id' => $agent->id,
                 'target_agent_name' => $agent->name,
                 'target_device' => $agent->device_name,
                 'from_sender' => $senderName,
-                'kind' => 'message',
+                'from_email' => $verifiedEmail ?: null,
+                'kind' => $isOwner ? 'prompt' : 'message',
                 'instructions' => $text,
                 'status' => 'queued',
-                'result_summary' => "Message from {$senderName} ({$senderDevice})",
+                'result_summary' => "From {$senderName} ({$senderDevice})",
             ]);
         }
 
         return $room->fresh(['participants', 'invites', 'messages', 'localTasks']);
+    }
+
+    /**
+     * Atomically hands queued tasks to one agent, so a hook, the channel bridge and an MCP
+     * pull never deliver the same task twice. Prompts become "running" until the agent's turn ends.
+     *
+     * @return \Illuminate\Support\Collection<int, ConcordLocalTask>
+     */
+    public function claimTasks(ConcordParticipant $agent, array $kinds = ['prompt'], int $limit = 5)
+    {
+        $candidates = ConcordLocalTask::query()
+            ->where('target_participant_id', $agent->id)
+            ->where('status', 'queued')
+            ->whereIn('kind', $kinds)
+            ->oldest('created_at')
+            ->limit($limit)
+            ->get();
+
+        return $candidates->filter(function (ConcordLocalTask $task) {
+            $status = $task->kind === 'prompt' ? 'running' : 'read';
+            $claimed = ConcordLocalTask::query()
+                ->whereKey($task->id)
+                ->where('status', 'queued')
+                ->update(['status' => $status, 'delivered_at' => now()]);
+
+            if ($claimed === 1) {
+                $task->status = $status;
+
+                return true;
+            }
+
+            return false;
+        })->values();
+    }
+
+    /**
+     * Marks the agent's running prompts done and posts its final answer to the room chat.
+     */
+    public function finishRunningPrompts(ConcordRoom $room, ConcordParticipant $agent, string $reply): int
+    {
+        $running = $room->localTasks()
+            ->where('target_participant_id', $agent->id)
+            ->where('kind', 'prompt')
+            ->where('status', 'running')
+            ->get();
+
+        if ($running->isEmpty()) {
+            return 0;
+        }
+
+        $reply = trim($reply) !== '' ? Str::limit(trim($reply), 4000) : 'Finished.';
+        $room->localTasks()->whereIn('id', $running->modelKeys())->update([
+            'status' => 'completed',
+            'reply' => $reply,
+            'completed_at' => now(),
+        ]);
+
+        $room->messages()->create([
+            'participant_id' => $agent->id,
+            'sender_name' => $agent->user_name,
+            'sender_user' => $agent->user_name,
+            'sender_device' => $agent->device_name,
+            'sender_kind' => 'agent',
+            'sender_icon' => 'AG',
+            'sender_color' => $agent->color ?: '#ff5722',
+            'kind' => 'agent_talk',
+            'content' => $reply,
+        ]);
+
+        return $running->count();
     }
 
     public function generateConnectorScript(
@@ -347,10 +426,16 @@ echo "[MCP] Connecting \${DEVICE_NAME} (\${USER_NAME} <\${USER_EMAIL}>) to Conco
 #    Existing config files are merged, never overwritten.
 MCP_URL=\$(python3 -c 'import sys, urllib.parse as u; print(sys.argv[1] + "/api/concord/mcp/" + sys.argv[2] + "?" + u.urlencode({"user_email": sys.argv[3], "user_name": sys.argv[4], "device_name": sys.argv[5]}))' "\${HUB_URL}" "\${MCP_TOKEN}" "\${USER_EMAIL}" "\${USER_NAME}" "\${DEVICE_NAME}")
 
+# Channel bridge: lets a prompt sent from the Concord UI wake an idle Claude Code terminal session.
+mkdir -p .concord
+echo '*' > .concord/.gitignore
+curl -fsS "\${HUB_URL}/concord-channel.mjs" -o .concord/channel.mjs || echo "[SKIP] Could not download the channel bridge"
+
 python3 - "\${MCP_URL}" <<'PY'
 import json, os, sys
 
 url = sys.argv[1]
+inbox_url = url.replace("?", "/inbox?", 1)
 targets = {
     ".mcp.json": {"type": "http", "url": url},                 # Claude Code
     ".cursor/mcp.json": {"url": url},                           # Cursor
@@ -368,15 +453,20 @@ for path, server in targets.items():
             print(f"[SKIP] {path} is not valid JSON; add the concord server by hand")
             continue
     data.setdefault("mcpServers", {})["concord"] = server
+    if path == ".mcp.json" and os.path.exists(".concord/channel.mjs"):
+        data["mcpServers"]["concord-channel"] = {"command": "node", "args": [".concord/channel.mjs", inbox_url]}
     with open(path, "w") as handle:
         json.dump(data, handle, indent=2)
     print(f"[MCP] Registered concord server in {path}")
 
 # Claude Code hooks report each prompt, tool call and finished turn to the room's agent board.
 # They live in .claude/settings.local.json (not committed) and only send summaries, never file contents.
+# The Stop hook also prints the hub's answer: when you sent this agent a prompt from the Concord UI,
+# that answer tells Claude to carry on with it, and Claude's final reply is posted back to the room.
 events_url = url.replace("?", "/events?", 1)
-command = "curl -s -m 3 -X POST -H 'Content-Type: application/json' --data-binary @- '" + events_url + "' >/dev/null 2>&1 || true"
-hook = {"type": "command", "command": command, "timeout": 5}
+post = "curl -s -m 3 -X POST -H 'Content-Type: application/json' --data-binary @- '" + events_url + "'"
+report_hook = {"type": "command", "command": post + " >/dev/null 2>&1 || true", "timeout": 5}
+stop_hook = {"type": "command", "command": post.replace("-s -m 3", "-sf -m 8") + " 2>/dev/null || true", "timeout": 10}
 path = ".claude/settings.local.json"
 os.makedirs(".claude", exist_ok=True)
 settings = {}
@@ -389,7 +479,7 @@ if os.path.exists(path):
         print(f"[SKIP] {path} is not valid JSON; Claude Code activity reporting not installed")
 if settings is not None:
     hooks = settings.setdefault("hooks", {})
-    for event, matcher in (("UserPromptSubmit", None), ("PreToolUse", "*"), ("Stop", None)):
+    for event, matcher, hook in (("UserPromptSubmit", None, report_hook), ("PreToolUse", "*", report_hook), ("Stop", None, stop_hook)):
         entries = [e for e in hooks.get(event, []) if "/api/concord/mcp/" not in json.dumps(e)]
         entry = {"hooks": [hook]}
         if matcher:
@@ -418,36 +508,13 @@ if [ -z "\${PARTICIPANT_ID}" ]; then
   PARTICIPANT_ID=\$(printf '%s' "\${REG_JSON}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('participant',{}).get('id',''))" 2>/dev/null || true)
 fi
 
-echo "[OK] MCP Connected & Verified on VPS Shared Memory Hub! Participant ID: \${PARTICIPANT_ID}"
-echo "[UNLOCKED] Group Chat prompting is now unlocked for \${USER_NAME} (\${DEVICE_NAME})."
-echo "[DIR] Local working directory: \$(pwd)"
-echo "[LISTEN] Listening for group chat prompts & peer agent handoffs to execute locally on THIS computer..."
-
-while true; do
-  TASK_RESP=\$(curl -s "\${HUB_URL}/api/concord/shared/\${SHARE_TOKEN}/tasks/pull?participant_id=\${PARTICIPANT_ID}" || true)
-  TASK_ID=\$(printf '%s' "\${TASK_RESP}" | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('task') or {}).get('id',''))" 2>/dev/null || true)
-
-  if [ -n "\${TASK_ID}" ]; then
-    INSTRUCTIONS=\$(printf '%s' "\${TASK_RESP}" | python3 -c "import sys,json; print(json.load(sys.stdin)['task']['instructions'])")
-    echo "[PULL] Received task #\${TASK_ID} from VPS Shared Memory! Executing locally on \${DEVICE_NAME}..."
-
-    curl -s -X POST "\${HUB_URL}/api/concord/shared/\${SHARE_TOKEN}/heartbeat" \\
-      -H "Content-Type: application/json" \\
-      -d "{\\"participant_id\\":\\"\${PARTICIPANT_ID}\\",\\"status\\":\\"editing_local\\",\\"current_thought\\":\\"Executing changes locally on \${DEVICE_NAME}...\\",\\"current_action\\":\\"Running local \${AGENT_CLI} in \$(basename \$(pwd))\\"}" >/dev/null
-
-    if command -v "\${AGENT_CLI}" >/dev/null 2>&1; then
-      "\${AGENT_CLI}" -p "\${INSTRUCTIONS}" || true
-    fi
-
-    MODIFIED=\$(git status --porcelain 2>/dev/null | awk '{print \$2}' | paste -sd, - || echo "")
-    curl -s -X POST "\${HUB_URL}/api/concord/shared/\${SHARE_TOKEN}/tasks/\${TASK_ID}/complete" \\
-      -H "Content-Type: application/json" \\
-      -d "{\\"participant_id\\":\\"\${PARTICIPANT_ID}\\",\\"modified_files\\":\\"\${MODIFIED}\\",\\"summary\\":\\"Applied changes locally on \${DEVICE_NAME}\\"}" >/dev/null
-
-    echo "[OK] Local edits completed on \${DEVICE_NAME} and synced to VPS Shared Memory!"
-  fi
-  sleep 2
-done
+echo "[OK] Connected \${DEVICE_NAME} to \${ROOM_TITLE}. Participant ID: \${PARTICIPANT_ID}"
+echo ""
+echo "Prompts you send to this agent from the Concord UI (signed in as \${USER_EMAIL}):"
+echo "  - run in your open Claude Code session (terminal or VS Code) as soon as it finishes its current turn;"
+echo "  - to also wake an idle terminal session, start Claude Code with:"
+echo "      claude --dangerously-load-development-channels server:concord-channel"
+echo "Restart Claude Code (or reload the VS Code window) so it picks up the new hooks."
 BASH;
     }
 }

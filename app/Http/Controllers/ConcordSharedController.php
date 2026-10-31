@@ -98,6 +98,7 @@ class ConcordSharedController extends Controller
         $validated['sender_user'] = $participant->user_name;
         $validated['sender_device'] = $participant->device_name;
         $validated['content'] = $text;
+        $validated['verified_email'] = $request->session()->get('agent_host.authenticated') ? ($sessionUser['email'] ?? null) : null;
 
         $hub->sendPrompt($room, $validated);
 
@@ -302,7 +303,8 @@ class ConcordSharedController extends Controller
         $participantId = $request->query('participant_id');
         $deviceName = $request->query('device_name');
 
-        $query = $room->localTasks()->where('status', 'queued')->oldest('created_at');
+        // Only prompts the agent's owner sent are runnable; plain room messages are read via MCP.
+        $query = $room->localTasks()->where('status', 'queued')->where('kind', 'prompt')->oldest('created_at');
         if ($participantId) {
             $query->where('target_participant_id', $participantId);
         } elseif ($deviceName) {
@@ -312,7 +314,8 @@ class ConcordSharedController extends Controller
         $task = $query->first();
         if ($task) {
             $task->update([
-                'status' => 'executing_on_device',
+                'status' => 'running',
+                'delivered_at' => now(),
             ]);
 
             if ($task->participant) {
@@ -359,6 +362,8 @@ class ConcordSharedController extends Controller
             'status' => $validated['status'] ?? 'completed',
             'modified_files' => $modifiedFiles,
             'result_summary' => $summary,
+            'reply' => $summary,
+            'completed_at' => now(),
         ]);
 
         $participant = $task->participant;
@@ -441,6 +446,14 @@ class ConcordSharedController extends Controller
         abort_unless($room, 404);
 
         return $server->handleEvent($request, $room);
+    }
+
+    public function mcpInbox(Request $request, string $mcpToken, ConcordMcpServer $server): JsonResponse
+    {
+        $room = ConcordRoom::query()->where('mcp_token', $mcpToken)->first();
+        abort_unless($room, 404);
+
+        return $server->handleInbox($request, $room);
     }
 
     /**

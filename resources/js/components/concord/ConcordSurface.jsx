@@ -25,6 +25,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
     const [deletingRoom, setDeletingRoom] = useState(false);
     const [sideTab, setSideTab] = useState('chat');
     const [localParticipantId, setLocalParticipantId] = useState('');
+    const [selectedAgentId, setSelectedAgentId] = useState(null);
 
     const [requiresEmailGate, setRequiresEmailGate] = useState(false);
     const [gateInfo, setGateInfo] = useState(null);
@@ -44,6 +45,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
     }, [rooms, selectedRoomId]);
 
     useEffect(() => {
+        setSelectedAgentId(null);
         if (!roomDetail?.id) return;
         try {
             const saved = localStorage.getItem(`concord_mcp_participant_${roomDetail.id}`) || '';
@@ -116,7 +118,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                 sender_email: payload.sender_email || visitorEmail || currentUser?.email || undefined,
             });
             setRoomDetail(updated);
-            toast('Prompt synced to VPS Shared Memory & local computer queues.');
+            toast('Sent');
         } catch (err) {
             if (err.data?.requires_mcp) {
                 setConnectModalOpen(true);
@@ -252,7 +254,7 @@ export default function ConcordSurface({ initialFullscreen = false }) {
         <section className={`concord-surface room-view${fullscreen ? ' concord-fullscreen' : ''}`}>
             <header className="room-head">
                 <div className="room-head-main">
-                    {rooms.length > 1 && !sharedToken ? (
+                    {rooms.length > 0 && !sharedToken ? (
                         <select
                             className="select room-switcher"
                             aria-label="Room"
@@ -327,6 +329,12 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                 <main className="room-agents" aria-label="Agents">
                     <AgentBoard
                         participants={participants}
+                        tasks={roomDetail?.local_tasks || []}
+                        selectedId={selectedAgentId}
+                        onSelect={(id) => {
+                            setSelectedAgentId(id);
+                            setSideTab('chat');
+                        }}
                         myParticipantIds={myParticipantIds}
                         isAdmin={isAdmin}
                         canEdit={canEdit}
@@ -353,6 +361,9 @@ export default function ConcordSurface({ initialFullscreen = false }) {
                     {sideTab === 'chat' ? (
                         <RoomChat
                             room={roomDetail}
+                            currentUser={currentUser}
+                            target={selectedAgentId || 'all'}
+                            onTargetChange={(value) => setSelectedAgentId(value === 'all' ? null : value)}
                             myParticipants={myParticipants}
                             hasConnectedMcp={hasConnectedMcp}
                             canEdit={canEdit}

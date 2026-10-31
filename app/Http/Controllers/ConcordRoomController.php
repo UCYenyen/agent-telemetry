@@ -300,6 +300,8 @@ class ConcordRoomController extends Controller
         $data['sender_user'] = $connectedParticipant->user_name;
         $data['sender_device'] = $connectedParticipant->device_name;
 
+        $data['verified_email'] = $request->session()->get('agent_host.authenticated') ? ($sessionUser['email'] ?? null) : null;
+
         $updated = $hub->sendPrompt($concordRoom, $data);
 
         return response()->json($this->formatRoom($updated, $request), 201);
