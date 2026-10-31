@@ -1910,3 +1910,66 @@
     font-size: 0.78rem;
     color: var(--muted);
 }
+
+.agent-connect-tile {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    min-height: 140px;
+    padding: 16px;
+    text-align: left;
+    color: var(--muted);
+    background: transparent;
+    border: 1px dashed var(--border-strong, var(--border));
+    border-radius: 12px;
+    cursor: pointer;
+    font: inherit;
+}
+
+.agent-connect-tile strong { color: var(--text); font-size: 0.95rem; }
+.agent-connect-tile span { font-size: 0.82rem; line-height: 1.45; }
+.agent-connect-tile:hover { border-color: var(--claude); color: var(--text); }
+
+/* Connect dialog */
+.concord-modal.connect-modal {
+    width: min(720px, calc(100vw - 32px));
+    max-height: calc(100dvh - 48px);
+    overflow-y: auto;
+    display: grid;
+    gap: 14px;
+}
+
+.connect-intro,
+.connect-note {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.connect-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+@media (max-width: 600px) { .connect-fields { grid-template-columns: 1fr; } }
+
+.connect-step {
+    display: grid;
+    gap: 8px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+}
+
+.connect-step-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.connect-step-head h4 { margin: 0; font-size: 0.95rem; color: var(--text); }
+.connect-device { max-width: 320px; }
+.connect-modal .concord-code-pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

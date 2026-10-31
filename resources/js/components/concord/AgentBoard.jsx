@@ -216,6 +216,12 @@ export default function AgentBoard({ participants, tasks = [], myParticipantIds,
                     prompts={tasks.filter((task) => task.kind === 'prompt' && String(task.target_participant_id) === String(participant.id)).slice(0, 3)}
                 />
             ))}
+            {canEdit && onConnect && (
+                <button type="button" className="agent-connect-tile" onClick={onConnect}>
+                    <strong>Connect an agent</strong>
+                    <span>Claude Code, Cursor, Gemini CLI, Codex or Antigravity on your computer. Get this group's MCP link and one-line connector.</span>
+                </button>
+            )}
         </div>
     );
 }

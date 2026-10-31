@@ -1,63 +1,24 @@
 import { useEffect, useState } from 'react';
-import { api } from '../../lib/api';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useApp } from '../../context/AppContext';
 
-export default function ConnectDeviceModal({
-    open,
-    room,
-    currentUser,
-    visitorEmail,
-    myParticipants = [],
-    activeToken,
-    onClose,
-    onDisconnectParticipant,
-    onConnected,
-}) {
+const slug = (value) => String(value || '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+export default function ConnectDeviceModal({ open, room, currentUser, visitorEmail, myParticipants = [], onClose }) {
     const { toast } = useApp();
-
-    const defaultName = currentUser?.name || currentUser?.username || 'Collaborator';
-    const defaultEmail = currentUser?.email || visitorEmail || room?.viewer_email || '';
-    const defaultSlug = String(currentUser?.username || defaultName || 'user')
-        .replace(/[^a-zA-Z0-9]+/g, '-')
-        .replace(/^-|-$/g, '') || 'user';
-
-    const [userName, setUserName] = useState(defaultName);
-    const [accountEmail, setAccountEmail] = useState(defaultEmail);
-    const [deviceName, setDeviceName] = useState(`${defaultSlug}-PC`);
-    const [agentName, setAgentName] = useState(`${defaultName} MCP Agent`);
-    const [provider, setProvider] = useState('claude');
-    const [model, setModel] = useState('claude-sonnet-5-5-high');
-    const [roleTitle, setRoleTitle] = useState('Full-Stack & Local Workspace Lead');
-    const [submitting, setSubmitting] = useState(false);
-    const [handshakeResult, setHandshakeResult] = useState(null);
-    const [selectedParticipantId, setSelectedParticipantId] = useState('');
+    const [userName, setUserName] = useState('');
+    const [accountEmail, setAccountEmail] = useState('');
+    const [deviceName, setDeviceName] = useState('');
     const [configClient, setConfigClient] = useState('claude');
 
     useEffect(() => {
         if (!open) return;
-        const nextName = currentUser?.name || currentUser?.username || 'Collaborator';
-        const nextEmail = currentUser?.email || visitorEmail || room?.viewer_email || '';
-        const nextSlug = String(currentUser?.username || nextName || 'user')
-            .replace(/[^a-zA-Z0-9]+/g, '-')
-            .replace(/^-|-$/g, '') || 'user';
-
-        if (myParticipants.length > 0) {
-            const mine = myParticipants[0];
-            setUserName(mine.user_name || nextName);
-            setAccountEmail(mine.account_email || nextEmail);
-            setDeviceName(mine.device_name || `${nextSlug}-PC`);
-            setAgentName(mine.name || `${nextName} MCP Agent`);
-            setProvider(mine.provider || 'claude');
-            setModel(mine.model || 'claude-sonnet-5-5-high');
-            setSelectedParticipantId(String(mine.id));
-        } else {
-            setUserName(nextName);
-            setAccountEmail(nextEmail);
-            setDeviceName(`${nextSlug}-PC`);
-            setAgentName(`${nextName} MCP Agent`);
-            setSelectedParticipantId('');
-        }
+        // Prefill from a computer you already connected, never from the group's own VPS session.
+        const mine = myParticipants.find((p) => !p.agent_session_id);
+        const name = currentUser?.name || currentUser?.username || '';
+        setUserName(mine?.user_name || name);
+        setAccountEmail(mine?.account_email || currentUser?.email || visitorEmail || room?.viewer_email || '');
+        setDeviceName(mine?.device_name || `${slug(currentUser?.username || name) || 'my'}-laptop`);
     }, [open, currentUser, visitorEmail, room?.viewer_email, myParticipants]);
 
     useEscapeKey(open && room, onClose);
@@ -66,66 +27,45 @@ export default function ConnectDeviceModal({
         return null;
     }
 
-    const token = activeToken || room.share_token;
     const baseUrl = window.location.origin;
-    const queryParams = new URLSearchParams();
-    if (selectedParticipantId) queryParams.set('participant_id', selectedParticipantId);
-    if (accountEmail) queryParams.set('email', accountEmail);
-    if (userName) queryParams.set('user', userName);
-    const querySuffix = queryParams.toString() ? `?${queryParams.toString()}` : '';
-
-    const oneLineCommand = `curl -fsSL "${baseUrl}/connect/${room.share_token}${querySuffix}" | bash`;
+    const connectQuery = new URLSearchParams();
+    if (accountEmail) connectQuery.set('email', accountEmail);
+    if (userName) connectQuery.set('user', userName);
+    const oneLineCommand = `curl -fsSL "${baseUrl}/connect/${room.share_token}${connectQuery.toString() ? `?${connectQuery}` : ''}" | bash`;
 
     const mcpBaseEndpoint = room.mcp_endpoint || `${baseUrl}/api/concord/mcp/${room.mcp_token}`;
-    const mcpQuery = new URLSearchParams({
-        user_email: accountEmail || '',
-        user_name: userName || '',
-        device_name: deviceName || '',
-    }).toString();
-    const personalizedMcpUrl = `${mcpBaseEndpoint}?${mcpQuery}`;
-
+    const mcpUrl = `${mcpBaseEndpoint}?${new URLSearchParams({ user_email: accountEmail, user_name: userName, device_name: deviceName })}`;
     const mcpJson = (server) => JSON.stringify({ mcpServers: { concord: server } }, null, 2);
-    const eventsUrl = personalizedMcpUrl.replace('?', '/events?');
-    const hookCommand = { type: 'command', command: `curl -s -m 3 -X POST -H 'Content-Type: application/json' --data-binary @- '${eventsUrl}' >/dev/null 2>&1 || true`, timeout: 5 };
-    // The Stop hook prints the hub's answer, which hands Claude the next prompt sent from this UI.
-    const stopHookCommand = { type: 'command', command: `curl -sf -m 8 -X POST -H 'Content-Type: application/json' --data-binary @- '${eventsUrl}' 2>/dev/null || true`, timeout: 10 };
-    const claudeHooksJson = JSON.stringify({
-        hooks: {
-            UserPromptSubmit: [{ hooks: [hookCommand] }],
-            PreToolUse: [{ matcher: '*', hooks: [hookCommand] }],
-            Stop: [{ hooks: [stopHookCommand] }],
-        },
-    }, null, 2);
     const clientConfigs = {
         claude: {
             label: 'Claude Code',
-            hint: 'Use the one-line connector above: it adds these hooks, which show your prompts and tool use on the agent board and run prompts you send from Concord when Claude finishes its current turn. To also wake an idle terminal session, start it with: claude --dangerously-load-development-channels server:concord-channel',
-            text: `claude mcp add --transport http concord "${personalizedMcpUrl}"\n\n# .claude/settings.local.json (live prompt + activity)\n${claudeHooksJson}`,
+            hint: 'MCP only. The one-line connector above also adds the hooks that show your prompts on the board and run prompts sent from this group.',
+            text: `claude mcp add --transport http concord "${mcpUrl}"`,
         },
         antigravity: {
             label: 'Antigravity',
             hint: 'Antigravity CLI: run the command. Antigravity app: Agent panel > MCP Servers > Manage > View raw config.',
-            text: `agy mcp add concord "${personalizedMcpUrl}"\n\n# or mcp_config.json\n${mcpJson({ serverUrl: personalizedMcpUrl })}`,
+            text: `agy mcp add concord "${mcpUrl}"\n\n# or mcp_config.json\n${mcpJson({ serverUrl: mcpUrl })}`,
         },
         gemini: {
             label: 'Gemini CLI',
             hint: 'Add to .gemini/settings.json in the project or ~/.gemini/settings.json.',
-            text: mcpJson({ httpUrl: personalizedMcpUrl }),
+            text: mcpJson({ httpUrl: mcpUrl }),
         },
         codex: {
             label: 'Codex',
             hint: 'Run once; Codex stores it in ~/.codex/config.toml.',
-            text: `codex mcp add concord --url "${personalizedMcpUrl}"\n\n# or ~/.codex/config.toml\n[mcp_servers.concord]\nurl = "${personalizedMcpUrl}"`,
+            text: `codex mcp add concord --url "${mcpUrl}"`,
         },
         cursor: {
             label: 'Cursor',
             hint: 'Save as .cursor/mcp.json in the project or ~/.cursor/mcp.json.',
-            text: mcpJson({ url: personalizedMcpUrl }),
+            text: mcpJson({ url: mcpUrl }),
         },
         other: {
-            label: 'Other (stdio)',
-            hint: 'For clients that only launch local commands (e.g. Claude Desktop): bridge with mcp-remote.',
-            text: mcpJson({ command: 'npx', args: ['-y', 'mcp-remote', personalizedMcpUrl] }),
+            label: 'Other',
+            hint: 'For clients that only launch local commands, such as Claude Desktop.',
+            text: mcpJson({ command: 'npx', args: ['-y', 'mcp-remote', mcpUrl] }),
         },
     };
     const activeConfig = clientConfigs[configClient] || clientConfigs.claude;
@@ -139,211 +79,72 @@ export default function ConnectDeviceModal({
         }
     };
 
-    const handleVerifyAndConnectMcp = async (event) => {
-        event.preventDefault();
-        setSubmitting(true);
-        try {
-            // 1. Live JSON-RPC 2.0 MCP Handshake (initialize)
-            const mcpInit = await api.post(`/api/concord/mcp/${room.mcp_token}`, {
-                jsonrpc: '2.0',
-                id: 1,
-                method: 'initialize',
-                params: {
-                    user_email: accountEmail,
-                    user_name: userName,
-                    device_name: deviceName,
-                    provider,
-                    model,
-                },
-            });
-
-            // 2. Register / Activate MCP Device in Room
-            const res = await api.post(`/api/concord/shared/${token}/register-device`, {
-                participant_id: selectedParticipantId || undefined,
-                user_name: userName,
-                account_email: accountEmail,
-                device_name: deviceName,
-                agent_name: agentName,
-                name: agentName,
-                provider,
-                model,
-                role_title: roleTitle,
-            });
-
-            setSelectedParticipantId(String(res.participant.id));
-            setHandshakeResult({
-                protocolVersion: mcpInit?.result?.protocolVersion || res.mcp_handshake?.protocolVersion || '2024-11-05',
-                serverName: mcpInit?.result?.serverInfo?.name || 'concord-vps-shared-memory-hub',
-                participant: res.participant,
-                tools: res.mcp_handshake?.tools || [
-                    'get_shared_memory',
-                    'write_shared_memory',
-                    'send_group_message',
-                    'report_thinking',
-                    'pull_local_tasks',
-                ],
-            });
-            toast(`MCP Connected & Verified for ${res.participant.user_name} (${res.participant.device_name})! Prompting is now unlocked.`);
-            onConnected?.(res.participant);
-        } catch (err) {
-            toast(err.message, 'error');
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    const participants = room.participants || [];
-
     return (
         <div className="concord-modal-backdrop" onClick={onClose}>
-            <div className="concord-modal concord-modal-wide" role="dialog" aria-modal="true" aria-labelledby="concord-connect-title" onClick={(e) => e.stopPropagation()}>
+            <div className="concord-modal connect-modal" role="dialog" aria-modal="true" aria-labelledby="concord-connect-title" onClick={(e) => e.stopPropagation()}>
                 <div className="concord-modal-head">
-                    <div>
-                        <h3 className="concord-modal-title" id="concord-connect-title">Connect your local MCP agent</h3>
-                    </div>
+                    <h3 className="concord-modal-title" id="concord-connect-title">Connect an agent to {room.title}</h3>
                     <button type="button" className="btn" onClick={onClose}>Close</button>
                 </div>
 
-                <div className="concord-connect-architecture">
-                    <div className="concord-arch-pill">
-                        <strong>WHY MCP CONNECTION IS REQUIRED FIRST:</strong> Group Chat rooms start with 0 default agents. Each user connects their own MCP first so prompts know which local computer to target.
-                    </div>
-                    <div className="concord-arch-pill emerald">
-                        <strong>UNLIMITED USERS & COMPUTERS:</strong> 1, 2, 3, 5, or 10+ users can connect their MCP simultaneously. VPS holds shared memory; file changes execute strictly on each user&apos;s own PC.
-                    </div>
-                </div>
+                <p className="connect-intro">
+                    This link belongs to this group only. Agents you connect here see this group&apos;s chat and shared memory, and nothing from other groups.
+                </p>
 
-                {handshakeResult && (
-                    <div className="concord-mcp-verified-banner">
-                        <div>
-                            <strong>[MCP HANDSHAKE VERIFIED // PROTOCOL {handshakeResult.protocolVersion}]</strong> Connected <code>{handshakeResult.participant.name}</code> on <code>{handshakeResult.participant.device_name}</code> to <code>{handshakeResult.serverName}</code>. Group Chat prompting is now unlocked!
-                        </div>
-                        <button type="button" className="btn btn-xs btn-emerald" onClick={onClose}>
-                            Start Prompting in Group Chat
+                <div className="connect-fields">
+                    <label className="field">
+                        <span>Your name</span>
+                        <input className="input" value={userName} onChange={(e) => setUserName(e.target.value)} />
+                    </label>
+                    <label className="field">
+                        <span>Your email</span>
+                        <input className="input" type="email" value={accountEmail} onChange={(e) => setAccountEmail(e.target.value)} placeholder="you@example.com" />
+                    </label>
+                </div>
+                <p className="connect-note">Use the email you sign in to Agent Host with, so prompts you send from this group run on your agent.</p>
+
+                <section className="connect-step">
+                    <div className="connect-step-head">
+                        <h4>1. Run this in your project folder</h4>
+                        <button type="button" className="btn btn-sm btn-primary" onClick={() => copyText(oneLineCommand, 'Copied the connector command')}>
+                            Copy
                         </button>
                     </div>
-                )}
+                    <pre className="concord-code-pre">{oneLineCommand}</pre>
+                    <p className="connect-note">
+                        Sets up Claude Code (terminal and VS Code), Cursor, Gemini CLI and Antigravity in that project. Needs bash, curl and python3; on Windows run it in Git Bash. Then restart Claude Code or reload the VS Code window.
+                    </p>
+                </section>
 
-                <div className="concord-connect-grid">
-                    <form className="concord-connect-card" onSubmit={handleVerifyAndConnectMcp}>
-                        <div className="concord-label">STEP 1 // CONFIGURE & VERIFY YOUR MCP AGENT CONNECTION</div>
-                        <div className="concord-form-grid">
-                            <label className="field">
-                                <span>Your User Name</span>
-                                <input className="input" value={userName} onChange={(e) => setUserName(e.target.value)} required />
-                            </label>
-                            <label className="field">
-                                <span>Your Account Email</span>
-                                <input className="input" type="email" value={accountEmail} onChange={(e) => setAccountEmail(e.target.value)} placeholder="you@domain.com" required />
-                            </label>
-                            <label className="field">
-                                <span>Local Computer Hostname</span>
-                                <input className="input" value={deviceName} onChange={(e) => setDeviceName(e.target.value)} placeholder="e.g. Bryan-MacBook-Pro" required />
-                            </label>
-                            <label className="field">
-                                <span>MCP Agent Display Name</span>
-                                <input className="input" value={agentName} onChange={(e) => setAgentName(e.target.value)} required />
-                            </label>
-                            <label className="field">
-                                <span>Local MCP Client / CLI</span>
-                                <select className="select" value={provider} onChange={(e) => setProvider(e.target.value)}>
-                                    <option value="claude">Claude Code (MCP + Local CLI)</option>
-                                    <option value="antigravity">Antigravity (MCP + Local CLI)</option>
-                                    <option value="cursor">Cursor IDE (Remote MCP)</option>
-                                    <option value="codex">OpenAI Codex CLI</option>
-                                </select>
-                            </label>
-                            <label className="field">
-                                <span>Model Identifier</span>
-                                <input className="input" value={model} onChange={(e) => setModel(e.target.value)} required />
-                            </label>
-                        </div>
-                        <label className="field" style={{ marginTop: '0.6rem' }}>
-                            <span>Workspace Role / Responsibility</span>
-                            <input className="input" value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} />
-                        </label>
-                        <button type="submit" className="btn btn-emerald" style={{ marginTop: '0.85rem', width: '100%' }} disabled={submitting}>
-                            {submitting ? 'Verifying MCP Handshake...' : 'Verify MCP Handshake & Unlock Prompting'}
+                <section className="connect-step">
+                    <div className="connect-step-head">
+                        <h4>Or add the MCP server by hand</h4>
+                        <button type="button" className="btn btn-sm" onClick={() => copyText(activeConfig.text, `Copied ${activeConfig.label} config`)}>
+                            Copy
                         </button>
-                    </form>
-
-                    <div className="concord-connect-card">
-                        <div className="concord-label">STEP 2 // LINK YOUR LOCAL IDE / TERMINAL VIA MCP OR 1-LINE SCRIPT</div>
-
-                        <div className="concord-code-box">
-                            <div className="concord-code-head">
-                                <span>Option A: add the MCP server to your agent</span>
-                                <button
-                                    type="button"
-                                    className="btn btn-xs btn-primary"
-                                    onClick={() => copyText(activeConfig.text, `Copied ${activeConfig.label} MCP config`)}
-                                >
-                                    Copy
-                                </button>
-                            </div>
-                            <div className="concord-client-tabs" role="tablist" aria-label="Agent client">
-                                {Object.entries(clientConfigs).map(([id, config]) => (
-                                    <button
-                                        key={id}
-                                        type="button"
-                                        role="tab"
-                                        aria-selected={configClient === id}
-                                        className={`concord-client-tab${configClient === id ? ' active' : ''}`}
-                                        onClick={() => setConfigClient(id)}
-                                    >
-                                        {config.label}
-                                    </button>
-                                ))}
-                            </div>
-                            <p className="concord-client-hint">{activeConfig.hint}</p>
-                            <pre className="concord-code-pre">{activeConfig.text}</pre>
-                        </div>
-
-                        <div className="concord-code-box" style={{ marginTop: '0.75rem' }}>
-                            <div className="concord-code-head">
-                                <span>Option B: one-line connector (configures Claude Code, Cursor, Gemini CLI and Antigravity, then listens for tasks)</span>
-                                <button
-                                    type="button"
-                                    className="btn btn-xs btn-emerald"
-                                    onClick={() => copyText(oneLineCommand, 'Copied 1-line MCP terminal connector command!')}
-                                >
-                                    Copy Terminal Command
-                                </button>
-                            </div>
-                            <pre className="concord-code-pre">{oneLineCommand}</pre>
-                        </div>
-
-                        {participants.length > 0 && (
-                            <div style={{ marginTop: '0.85rem' }}>
-                                <div className="concord-label">ACTIVE MCP NODES IN THIS ROOM ({participants.length})</div>
-                                <div className="concord-people-list" style={{ marginBottom: 0 }}>
-                                    {participants.map((p, idx) => (
-                                        <div key={p.id} className="concord-person-row">
-                                            <div className="concord-person-avatar" style={{ background: p.color || '#10b981', color: '#05120d' }}>
-                                                {`U${idx + 1}`}
-                                            </div>
-                                            <div className="concord-person-info">
-                                                <div className="concord-person-name">{p.user_name} — {p.name}</div>
-                                                <div className="concord-person-email">PC: {p.device_name} // {p.account_email || 'MCP Verified'}</div>
-                                            </div>
-                                            {onDisconnectParticipant && (
-                                                <button
-                                                    type="button"
-                                                    className="btn btn-xs btn-danger"
-                                                    onClick={() => onDisconnectParticipant(p)}
-                                                >
-                                                    Disconnect
-                                                </button>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
                     </div>
-                </div>
+                    <label className="field connect-device">
+                        <span>This computer&apos;s name</span>
+                        <input className="input" value={deviceName} onChange={(e) => setDeviceName(e.target.value)} />
+                    </label>
+                    <div className="concord-client-tabs" role="tablist" aria-label="Agent client">
+                        {Object.entries(clientConfigs).map(([id, config]) => (
+                            <button
+                                key={id}
+                                type="button"
+                                role="tab"
+                                aria-selected={configClient === id}
+                                className={`concord-client-tab${configClient === id ? ' active' : ''}`}
+                                onClick={() => setConfigClient(id)}
+                            >
+                                {config.label}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="concord-client-hint">{activeConfig.hint}</p>
+                    <pre className="concord-code-pre">{activeConfig.text}</pre>
+                </section>
             </div>
         </div>
     );
 }
-

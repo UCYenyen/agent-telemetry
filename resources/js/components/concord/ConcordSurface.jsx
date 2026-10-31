@@ -268,6 +268,7 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
                         {participants.length} agent{participants.length === 1 ? '' : 's'}
                         {workingCount > 0 && <span className="room-meta-working"> · {workingCount} working</span>}
                         {accessLabel && ` · ${accessLabel}`}
+                        {roomDetail && !canEdit && ' · View only: ask the group admin for the team_member role to connect an agent'}
                     </p>
                 </div>
 
@@ -275,7 +276,7 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
                     <div className="room-actions">
                         {canEdit && (
                             <button type="button" className="btn btn-primary" onClick={() => setConnectModalOpen(true)}>
-                                {hasConnectedMcp ? 'Connect another agent' : 'Connect your agent'}
+                                Connect an agent
                             </button>
                         )}
                         <button type="button" className="btn" onClick={() => setShareModalOpen(true)}>
@@ -375,21 +376,7 @@ export default function ConcordSurface({ initialFullscreen = false, onOpenConsol
                 currentUser={currentUser}
                 visitorEmail={visitorEmail}
                 myParticipants={myParticipants}
-                activeToken={sharedToken || roomDetail?.share_token}
                 onClose={() => setConnectModalOpen(false)}
-                onDisconnectParticipant={handleDisconnectParticipant}
-                onConnected={(participant) => {
-                    if (participant?.id && roomDetail?.id) {
-                        try {
-                            localStorage.setItem(`concord_mcp_participant_${roomDetail.id}`, String(participant.id));
-                        } catch {
-                            // ignore
-                        }
-                        setLocalParticipantId(String(participant.id));
-                    }
-                    fetchRoom();
-                    reload();
-                }}
             />
         </section>
     );
