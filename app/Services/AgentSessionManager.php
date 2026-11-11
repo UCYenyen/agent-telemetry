@@ -83,10 +83,13 @@ class AgentSessionManager
         return $session;
     }
 
-    public function prompt(AgentSession $session, string $text): bool
+    /**
+     * @param  list<string>  $images  absolute paths of images saved under agenthost.upload_dir
+     */
+    public function prompt(AgentSession $session, string $text, array $images = []): bool
     {
         $session->update(['last_prompt' => $text]);
-        $session->messages()->create(['role' => 'user', 'content' => $text, 'model' => $session->model]);
+        $session->messages()->create(['role' => 'user', 'content' => $text, 'model' => $session->model, 'attachments' => $images ?: null]);
 
         if ($session->use_openrouter) {
             $this->replyViaOpenRouter($session, $text);
@@ -94,7 +97,10 @@ class AgentSessionManager
             return true;
         }
 
-        if ($this->tmux->send($session->name, $text)) {
+        // The CLI agents read images from paths in the prompt
+        $typed = $images ? trim($text.' '.implode(' ', $images)) : $text;
+
+        if ($this->tmux->send($session->name, $typed)) {
             return true;
         }
 

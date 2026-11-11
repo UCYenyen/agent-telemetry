@@ -73,6 +73,20 @@ export default function ChatMessage({ message, avatar, sender, thinkingSteps = [
                     </div>
                 )}
 
+                {message.attachments?.length > 0 && (
+                    <div className="cc-attachments">
+                        {message.attachments.map((path) => {
+                            const src = `/api/sessions/${message.agent_session_id}/images/${path.split('/').pop()}`;
+
+                            return (
+                                <a key={path} href={src} target="_blank" rel="noreferrer" className="cc-attachment">
+                                    <img src={src} alt="Attached image" loading="lazy" />
+                                </a>
+                            );
+                        })}
+                    </div>
+                )}
+
                 {message.content && (
                     <div className={`ow-bubble cc-bubble ${isUser ? 'user-bubble' : 'ai-bubble'}`}>
                         {message.content}

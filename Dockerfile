@@ -28,7 +28,8 @@ RUN echo 'Acquire::Retries "10";' > /etc/apt/apt.conf.d/80retries \
     && apt-get update \
     && apt-get install -y --no-install-recommends tmux procps util-linux libpq-dev \
     && docker-php-ext-install pdo_pgsql pcntl bcmath \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && printf 'upload_max_filesize=10M\npost_max_size=64M\nmax_file_uploads=10\n' > /usr/local/etc/php/conf.d/uploads.ini
 
 WORKDIR /app
 COPY --from=vendor /app /app

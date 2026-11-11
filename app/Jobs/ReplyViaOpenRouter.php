@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\AgentSession;
+use App\Models\SessionMessage;
 use App\Services\OpenRouter;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -26,11 +27,12 @@ class ReplyViaOpenRouter implements ShouldQueue
             ->limit(16)
             ->get()
             ->reverse()
-            ->map(fn ($message) => ['role' => $message->role, 'content' => $message->content])
+            ->map(fn ($message) => ['role' => $message->role, 'content' => $this->content($message)])
             ->values()
             ->all();
 
-        if (! $history || end($history)['content'] !== $this->prompt) {
+        // A message with images is already the prompt, as content parts
+        if (! $history || (is_string(end($history)['content']) && end($history)['content'] !== $this->prompt)) {
             $history[] = ['role' => 'user', 'content' => $this->prompt];
         }
 
@@ -39,6 +41,26 @@ class ReplyViaOpenRouter implements ShouldQueue
 
         $this->session->update(['model' => $usedModel, 'state' => 'idle']);
         $this->session->messages()->create(['role' => 'assistant', 'content' => $reply, 'model' => "openrouter // {$usedModel}"]);
+    }
+
+    /**
+     * Plain text, or OpenAI-style content parts when the message carries images.
+     */
+    private function content(SessionMessage $message): string|array
+    {
+        $images = array_filter($message->attachments ?? [], 'is_file');
+
+        if (! $images) {
+            return $message->content;
+        }
+
+        return [
+            ['type' => 'text', 'text' => $message->content],
+            ...array_map(fn ($path) => [
+                'type' => 'image_url',
+                'image_url' => ['url' => 'data:'.mime_content_type($path).';base64,'.base64_encode(file_get_contents($path))],
+            ], array_values($images)),
+        ];
     }
 
     public function failed(): void

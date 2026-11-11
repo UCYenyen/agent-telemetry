@@ -4,6 +4,10 @@ return [
 
     'agy_bin' => env('AGY_BIN', 'agy'),
 
+    // Prompt images are saved here; the same path is bind-mounted into the containers
+    // so the agents on the host can open the files the app writes.
+    'upload_dir' => env('AGENT_UPLOAD_DIR', '/var/www/PersonalProject/llm-uploads'),
+
     'password_hash' => env('AGENT_HOST_PASSWORD_HASH', ''),
 
     'defaults' => [

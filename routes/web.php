@@ -53,6 +53,7 @@ Route::middleware(RequirePassword::class)->group(function () {
                 ->parameters(['sessions' => 'agentSession']);
             Route::post('sessions/{agentSession}/restart', [AgentSessionController::class, 'restart']);
             Route::post('sessions/{agentSession}/messages', [SessionMessageController::class, 'store']);
+            Route::get('sessions/{agentSession}/images/{file}', [SessionMessageController::class, 'image'])->where('file', '[A-Za-z0-9-]+\\.[a-z]+');
             Route::delete('sessions/{agentSession}/messages', [SessionMessageController::class, 'destroy']);
 
             Route::patch('settings', [SettingsController::class, 'update']);

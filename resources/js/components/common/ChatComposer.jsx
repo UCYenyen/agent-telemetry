@@ -1,4 +1,6 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+const MAX_IMAGES = 6;
 
 export default function ChatComposer({
     placeholder,
@@ -9,9 +11,45 @@ export default function ChatComposer({
     disabled = false,
     quickActions = [],
     leftSlot = null,
+    allowImages = false,
 }) {
     const [text, setText] = useState('');
+    const [images, setImages] = useState([]);
     const textarea = useRef(null);
+    const fileInput = useRef(null);
+
+    const latestImages = useRef(images);
+    latestImages.current = images;
+
+    // Free the remaining preview URLs when the composer unmounts
+    useEffect(() => () => latestImages.current.forEach((image) => URL.revokeObjectURL(image.preview)), []);
+
+    const addImages = (files) => {
+        const picked = Array.from(files).filter((file) => file.type.startsWith('image/'));
+        if (!allowImages || disabled || !picked.length) return;
+        setImages((current) =>
+            [...current, ...picked.map((file) => ({ file, preview: URL.createObjectURL(file) }))].slice(0, MAX_IMAGES),
+        );
+    };
+
+    const removeImage = (index) => {
+        URL.revokeObjectURL(images[index].preview);
+        setImages((current) => current.filter((_, i) => i !== index));
+    };
+
+    const handlePaste = (event) => {
+        const files = Array.from(event.clipboardData?.files ?? []);
+        if (allowImages && files.some((file) => file.type.startsWith('image/'))) {
+            event.preventDefault();
+            addImages(files);
+        }
+    };
+
+    const handleDrop = (event) => {
+        if (!allowImages) return;
+        event.preventDefault();
+        addImages(event.dataTransfer.files);
+    };
 
     const resize = () => {
         if (!textarea.current) return;
@@ -24,15 +62,22 @@ export default function ChatComposer({
         if (disabled) return;
         const value = text.trim();
 
-        if (!value) {
+        if (!value && !images.length) {
             return;
         }
 
+        const files = images.map((image) => image.file);
+        images.forEach((image) => URL.revokeObjectURL(image.preview));
         setText('');
+        setImages([]);
         if (textarea.current) {
             textarea.current.style.height = 'auto';
         }
-        onSubmit(value);
+        if (files.length) {
+            onSubmit(value, files);
+        } else {
+            onSubmit(value);
+        }
     };
 
     const insertChip = (snippet) => {
@@ -70,8 +115,25 @@ export default function ChatComposer({
                         ))}
                     </div>
                 )}
-                <form onSubmit={submit}>
+                <form onSubmit={submit} onDragOver={allowImages ? (event) => event.preventDefault() : undefined} onDrop={handleDrop}>
                     <div className={`ow-input-box cc-input-card${disabled ? ' is-disabled' : ''}`}>
+                        {images.length > 0 && (
+                            <div className="cc-attachments cc-attachments-draft">
+                                {images.map((image, index) => (
+                                    <div key={image.preview} className="cc-attachment">
+                                        <img src={image.preview} alt={image.file.name} />
+                                        <button
+                                            type="button"
+                                            className="cc-attachment-remove"
+                                            onClick={() => removeImage(index)}
+                                            aria-label={`Remove ${image.file.name}`}
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                         <div className="cc-prompt-row">
                             <span className="cc-prompt-chevron" aria-hidden="true">&gt;</span>
                             <textarea
@@ -83,8 +145,9 @@ export default function ChatComposer({
                                 onChange={(event) => setText(event.target.value)}
                                 onInput={resize}
                                 onKeyDown={handleKeyDown}
+                                onPaste={handlePaste}
                                 disabled={disabled}
-                                required
+                                required={!images.length}
                             />
                         </div>
                         <div className="ow-input-bar cc-input-bar">
@@ -94,6 +157,30 @@ export default function ChatComposer({
                                 {hint}
                             </div>
                             <div className="cc-submit-group">
+                                {allowImages && (
+                                    <>
+                                        <input
+                                            ref={fileInput}
+                                            type="file"
+                                            accept="image/png,image/jpeg,image/gif,image/webp"
+                                            multiple
+                                            hidden
+                                            onChange={(event) => {
+                                                addImages(event.target.files);
+                                                event.target.value = '';
+                                            }}
+                                        />
+                                        <button
+                                            type="button"
+                                            className="cc-quick-pill"
+                                            onClick={() => fileInput.current?.click()}
+                                            disabled={disabled || images.length >= MAX_IMAGES}
+                                            title="Attach images (or paste / drop them)"
+                                        >
+                                            + IMAGE
+                                        </button>
+                                    </>
+                                )}
                                 <span className="cc-kbd-hint"> to send · ⇧ newline</span>
                                 <button type="submit" className="cc-send-btn" disabled={disabled}>
                                     {submitLabel}

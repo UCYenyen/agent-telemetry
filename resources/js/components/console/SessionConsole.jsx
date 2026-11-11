@@ -68,11 +68,18 @@ function ConsoleBody({ sessionId, onSelectSession, onClose }) {
         }
     };
 
-    const send = async (text) => {
+    const send = async (text, images = []) => {
         setSending(true);
 
         try {
-            await api.post(`${url}/messages`, { text });
+            if (images.length) {
+                const form = new FormData();
+                form.append('text', text);
+                images.forEach((file) => form.append('images[]', file));
+                await api.post(`${url}/messages`, form);
+            } else {
+                await api.post(`${url}/messages`, { text });
+            }
             toast('Prompt transmitted to agent');
         } catch (err) {
             toast(`Prompt not delivered: ${err.message}`, 'error');
@@ -162,6 +169,7 @@ function ConsoleBody({ sessionId, onSelectSession, onClose }) {
                         submitLabel="SEND PROMPT ↵"
                         onSubmit={send}
                         quickActions={QUICK_ACTIONS}
+                        allowImages
                         hint={
                             <>
                                 <span>

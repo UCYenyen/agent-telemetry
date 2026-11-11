@@ -1,14 +1,16 @@
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
 
 async function request(method, url, body) {
+    // FormData (file uploads) sets its own multipart Content-Type
+    const isForm = body instanceof FormData;
     const response = await fetch(url, {
         method,
         headers: {
             Accept: 'application/json',
-            'Content-Type': 'application/json',
+            ...(isForm ? {} : { 'Content-Type': 'application/json' }),
             'X-CSRF-TOKEN': csrfToken,
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: body === undefined || isForm ? body : JSON.stringify(body),
     });
 
     if (response.status === 401) {

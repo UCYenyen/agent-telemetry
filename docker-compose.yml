@@ -12,6 +12,8 @@ x-app: &app
   volumes:
     - /tmp/tmux-0:/tmp/tmux-0 # host tmux server socket
     - storage:/app/storage
+    # Prompt images: same path inside and out, so the path the app writes is the one the host agents open
+    - /var/www/PersonalProject/llm-uploads:/var/www/PersonalProject/llm-uploads
   networks:
     - global_proxy # reaches the shared `postgres` container
 
