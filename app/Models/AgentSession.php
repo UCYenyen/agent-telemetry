@@ -17,6 +17,7 @@ class AgentSession extends Model
         'title',
         'agent',
         'model',
+        'workdir',
         'use_openrouter',
         'remote_url',
         'state',

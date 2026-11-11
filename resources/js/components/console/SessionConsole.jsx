@@ -61,6 +61,13 @@ function ConsoleBody({ sessionId, onSelectSession, onClose }) {
         }
     };
 
+    const restart = async () => {
+        if (window.confirm(`Restart this session? The agent process is relaunched${kind === 'claude' ? ' and resumes its last conversation' : ''}.`)) {
+            await run(() => api.post(`${url}/restart`), 'Session restarted.');
+            fetchHistory();
+        }
+    };
+
     const send = async (text) => {
         setSending(true);
 
@@ -86,6 +93,7 @@ function ConsoleBody({ sessionId, onSelectSession, onClose }) {
                 onToggleOpenRouter={toggleOpenRouter}
                 onRefresh={fetchHistory}
                 onClear={clear}
+                onRestart={restart}
                 onClose={onClose}
                 sidebarOpen={sidebarOpen}
                 onToggleSidebar={() => setSidebarOpen((open) => !open)}

@@ -45,6 +45,31 @@ class AgentSessionTest extends TestCase
         Process::assertRan(fn ($process) => in_array('-l', $process->command, true) && str_contains(end($process->command), "-n 'x\"; rm -rf ~; \"'"));
     }
 
+    public function test_restart_relaunches_tmux_session_and_resumes_conversation(): void
+    {
+        $alive = true;
+        Process::fake(function (PendingProcess $process) use (&$alive) {
+            if (($process->command[1] ?? null) === 'kill-session') {
+                $alive = false;
+            }
+
+            return Process::result(exitCode: ($process->command[1] ?? null) === 'has-session' && ! $alive ? 1 : 0);
+        });
+        $session = AgentSession::create(['name' => 'Agent_restart', 'title' => 'R', 'agent' => 'claude', 'model' => 'claude-sonnet-5-5-medium', 'workdir' => '/srv/app', 'state' => 'working', 'fallback_stage' => 1, 'fallback_triggered' => true]);
+        $session->messages()->create(['role' => 'user', 'content' => 'keep me']);
+
+        $this->postJson("/api/sessions/{$session->id}/restart")
+            ->assertOk()
+            ->assertJsonPath('name', 'Agent_restart')
+            ->assertJsonPath('state', 'idle')
+            ->assertJsonPath('fallback_stage', 0);
+
+        Process::assertRan(fn ($process) => $process->command === ['tmux', 'kill-session', '-t', 'Agent_restart']);
+        Process::assertRan(fn ($process) => in_array('new-session', $process->command, true) && in_array('/srv/app', $process->command, true));
+        Process::assertRan(fn ($process) => in_array('-l', $process->command, true) && str_starts_with(end($process->command), 'claude --continue '));
+        $this->assertSame(1, $session->messages()->count());
+    }
+
     public function test_switching_to_an_openrouter_model_moves_session_to_openrouter(): void
     {
         Process::fake();

@@ -16,6 +16,7 @@ export default function ConsoleHeader({
     onToggleOpenRouter,
     onRefresh,
     onClear,
+    onRestart,
     onClose,
     sidebarOpen,
     onToggleSidebar,
@@ -68,6 +69,11 @@ export default function ConsoleHeader({
                 <button type="button" className="ow-icon-btn" onClick={onRefresh} title="Sync conversation" aria-label="Sync conversation">
                     ↻
                 </button>
+                {onRestart && (
+                    <button type="button" className="ow-icon-btn" onClick={onRestart} title="Restart agent session" aria-label="Restart agent session">
+                        RESTART
+                    </button>
+                )}
                 <button type="button" className="ow-icon-btn" onClick={onClear} title="Clear chat history" aria-label="Clear chat history">
                     CLEAR
                 </button>

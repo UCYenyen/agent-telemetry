@@ -63,6 +63,13 @@ class AgentSessionController extends Controller
         return response()->json($agentSession);
     }
 
+    public function restart(Request $request, AgentSession $agentSession): JsonResponse
+    {
+        $data = $request->validate(['resume' => ['sometimes', 'boolean']]);
+
+        return response()->json($this->manager->restart($agentSession, $data['resume'] ?? true));
+    }
+
     public function destroy(AgentSession $agentSession): Response
     {
         $this->manager->stop($agentSession);

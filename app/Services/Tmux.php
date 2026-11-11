@@ -63,6 +63,17 @@ class Tmux
         return $result->successful() ? $result->output() : '';
     }
 
+    /**
+     * The directory the session's active pane is in, or null when the session is gone.
+     */
+    public function currentPath(string $name): ?string
+    {
+        $result = $this->run('display-message', '-p', '-t', $name, '#{pane_current_path}');
+        $path = trim($result->output());
+
+        return $result->successful() && $path !== '' ? $path : null;
+    }
+
     public function kill(string $name): bool
     {
         return ! $this->has($name) || $this->run('kill-session', '-t', $name)->successful();

@@ -51,6 +51,7 @@ Route::middleware(RequirePassword::class)->group(function () {
             Route::apiResource('sessions', AgentSessionController::class)
                 ->only(['store', 'show', 'update', 'destroy'])
                 ->parameters(['sessions' => 'agentSession']);
+            Route::post('sessions/{agentSession}/restart', [AgentSessionController::class, 'restart']);
             Route::post('sessions/{agentSession}/messages', [SessionMessageController::class, 'store']);
             Route::delete('sessions/{agentSession}/messages', [SessionMessageController::class, 'destroy']);
 

@@ -72,6 +72,7 @@ class AgentSessionManager
             'title' => $title,
             'agent' => $agent,
             'model' => $model,
+            'workdir' => $workdir,
             'use_openrouter' => $useOpenRouter,
             'fallback_enabled' => (bool) $defaults['fallback_enabled'],
         ]);
@@ -141,6 +142,42 @@ class AgentSessionManager
         $session->update($enabled
             ? ['use_openrouter' => true, 'agent' => 'openrouter', 'model' => $isOpenRouterModel ? $session->model : $defaults['openrouter_model']]
             : ['use_openrouter' => false, 'agent' => 'claude', 'model' => $isOpenRouterModel ? $defaults['claude_model'] : $session->model]);
+    }
+
+    /**
+     * Kills the agent's tmux session and launches it again under the same name, keeping the
+     * session record, its chat history and its group chat. With $resume, Claude picks up the
+     * most recent conversation in the working directory (--continue).
+     */
+    public function restart(AgentSession $session, bool $resume = true): AgentSession
+    {
+        $session->fill(['state' => 'idle', 'fallback_triggered' => false, 'fallback_stage' => 0]);
+
+        if ($session->use_openrouter) {
+            $session->save();
+
+            return $session;
+        }
+
+        $workdir = $session->workdir
+            ?: $this->tmux->currentPath($session->name)
+            ?: Setting::read('defaults')['workdir'];
+
+        $concordFlags = null;
+
+        if ($session->agent === 'claude' && ($room = $session->room)) {
+            $concordFlags = app(ConcordHubService::class)->vpsClaudeConfig($room, $room->owner_email, $session->name, $session->title);
+        }
+
+        $this->tmux->kill($session->name);
+
+        if (! $this->tmux->create($session->name, $this->command($session->agent, $session->model ?: 'auto', $session->title, $concordFlags, $resume), $workdir)) {
+            Log::warning("[session] tmux session restart failed for {$session->name}");
+        }
+
+        $session->fill(['workdir' => $workdir, 'remote_url' => null])->save();
+
+        return $session;
     }
 
     /**
@@ -356,7 +393,7 @@ class AgentSessionManager
         }
     }
 
-    private function command(string $agent, string $model, string $title, ?array $concordFlags = null): string
+    private function command(string $agent, string $model, string $title, ?array $concordFlags = null, bool $resume = false): string
     {
         if ($agent === 'antigravity') {
             return sprintf('%s --mode accept-edits --model %s --remote-control', config('agenthost.agy_bin'), escapeshellarg($model));
@@ -368,7 +405,8 @@ class AgentSessionManager
         [$mcpConfig, $settings] = $concordFlags ?? [null, null];
 
         return sprintf(
-            'claude %s--permission-mode %s --model %s --effort %s --autocompact auto -n %s --remote-control %s',
+            'claude %s%s--permission-mode %s --model %s --effort %s --autocompact auto -n %s --remote-control %s',
+            $resume ? '--continue ' : '',
             $mcpConfig ? sprintf('--mcp-config %s --settings %s ', escapeshellarg($mcpConfig), escapeshellarg($settings)) : '',
             escapeshellarg($defaults['permission_mode']),
             escapeshellarg($cliModel),

@@ -21,6 +21,12 @@ export default function SessionCard({ session, onOpenConsole }) {
         run(() => api.patch(url, { fallback_enabled: !session.fallback_enabled }), 'Failover configuration updated');
     };
 
+    const restart = () => {
+        if (window.confirm(`Restart "${session.title || session.name}"? The agent process is relaunched in the same tmux session${kind === 'claude' ? ' and resumes its last conversation' : ''}.`)) {
+            run(() => api.post(`${url}/restart`), 'Session restarted.');
+        }
+    };
+
     const stop = () => {
         if (window.confirm(`Terminate "${session.title || session.name}" (${session.name})? The agent's tmux session is stopped.`)) {
             run(() => api.delete(url), 'Session terminated.');
@@ -63,6 +69,9 @@ export default function SessionCard({ session, onOpenConsole }) {
                         REMOTE ↗
                     </a>
                 )}
+                <button type="button" className="quiet" onClick={restart} title="Restart session" aria-label={`Restart ${session.title || session.name}`}>
+                    Restart
+                </button>
                 <button type="button" className="quiet" onClick={stop} title="Terminate session" aria-label={`Terminate ${session.title || session.name}`}>
                     Stop
                 </button>
